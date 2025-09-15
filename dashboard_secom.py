@@ -32,7 +32,7 @@ def _is_link(val: str) -> bool:
 
 def _linkify(val: str) -> str:
     if _is_link(val):
-        return f'<a href="{val}" target="_blank">abrir</a>'
+        return f"[abrir]({val})"
     return str(val) if (val is not None) else ""
 
 def _fmt_currency(v) -> str:
@@ -202,7 +202,7 @@ app.layout = html.Div(className="light", id="root", children=[
                     style_cell_conditional=[
                         {"if": {"column_id": "VALOR DO ESPELHO"}, "textAlign":"right"},
                     ],
-                    dangerously_allow_html=True,
+                    markdown_options={"link_target": "_blank"},
                 )
             ]),
         ]),
@@ -315,7 +315,9 @@ def atualizar(f_sec, f_ag, f_camp, f_comp, dt_ini, dt_fim, busca, sort, n_reload
     fmt_cur = Format(scheme=Scheme.fixed, precision=2, group=Group.yes, groups=3, group_delimiter=".", decimal_delimiter=",")
     columns = []
     for c in present:
-        col = {"name": c, "id": c, "presentation": "markdown" if c in ["PROCESSO","EMPENHO"] else "input"}
+        col = {"name": c, "id": c}
+        if c in ["ESPELHO DIANA","ESPELHO","PDF","PROCESSO","EMPENHO"]:
+            col["presentation"] = "markdown"
         if c == "VALOR DO ESPELHO":
             col.update({"type":"numeric", "format": fmt_cur})
         columns.append(col)
