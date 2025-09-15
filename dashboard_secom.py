@@ -18,7 +18,7 @@ from dash import Input, Output, State
 from dash.dash_table.Format import Format, Group, Scheme
 import plotly.express as px
 
-EXCEL_PATH = os.environ.get("EXCEL_PATH", os.path.join("data", "CONTROLE DE PROCESSOS SECOM.xlsx"))
+EXCEL_PATH = os.environ.get("EXCEL_PATH", os.path.join("data", "PLANILHA 2025 (1).xlsx")))
 SHEET_NAME = os.environ.get("SHEET_NAME", "CONTROLE DE PROCESSOS - GERAL")
 
 # ========= HELPERS =========
@@ -43,45 +43,119 @@ def _fmt_currency(v) -> str:
     except Exception:
         return "R$ 0,00"
 
+
+def _month_from_sheet(sheet_name: str):
+    m = sheet_name.strip().upper()
+    mapa = {
+        "JANEIRO":"01","FEVEREIRO":"02","MARÇO":"03","ABRIL":"04","MAIO":"05","JUNHO":"06",
+        "JULHO":"07","AGOSTO":"08","SETEMBRO":"09","OUTUBRO":"10","NOVEMBRO":"11","DEZEMBRO":"12",
+        "JANEIROFEVEREIRO":"01-02"
+    }
+    for k,v in mapa.items():
+        if k in m: return v
+    return ""
+
+def _normalize_columns(df: pd.DataFrame):
+    ren = {}
+    for c in df.columns:
+        cstr = str(c).strip().upper()
+        if cstr in {"VALOR DO ESPELHO","VALOR","VALOR TOTAL","VLR","VLR. BRUTO","VLR BRUTO"}:
+            ren[c] = "VALOR DO ESPELHO"
+        elif cstr in {"AGÊNCIA","AGENCIA"}:
+            ren[c] = "AGÊNCIA"
+        elif cstr in {"SECRETARIA","ÓRGÃO","ORGAO"}:
+            ren[c] = "SECRETARIA"
+        elif cstr in {"PROCESSO","Nº PROCESSO","N PROCESSO","Nº DO PROCESSO"}:
+            ren[c] = "PROCESSO"
+        elif cstr in {"EMPENHO","Nº EMPENHO","N EMPENHO"}:
+            ren[c] = "EMPENHO"
+        elif cstr in {"OBS","OBSERVAÇÃO","OBSERVACOES","OBSERVACOES"}:
+            ren[c] = "OBSERVAÇÃO"
+        elif cstr in {"CAMPANHA","NOME CAMPANHA","TÍTULO","TITULO"}:
+            ren[c] = "CAMPANHA"
+        elif cstr in {"DATA DO EMPENHO","DATA EMPENHO","DATA"}:
+            ren[c] = "DATA DO EMPENHO"
+    return df.rename(columns=ren)
+
+def _read_blocks_from_sheet(xl: pd.ExcelFile, s: str) -> list[pd.DataFrame]:
+    raw = xl.parse(s, header=None)
+    raw_str = raw.astype(str).replace("nan","")
+    # Candidate header rows: contain at least 2 of the known tokens
+    tokens = ["AGÊNCIA","AGENCIA","VALOR","PROCESSO","EMPENHO","SECRETARIA","OBSERVAÇÃO","CAMPANHA"]
+    header_rows = []
+    for i in range(min(len(raw), 1000)):
+        row_vals = [str(v).strip().upper() for v in list(raw.iloc[i,:].values)]
+        hits = sum(any(tok in v for tok in tokens) for v in row_vals)
+        if hits >= 2:
+            header_rows.append(i)
+    blocks = []
+    for h in header_rows:
+        try:
+            df2 = xl.parse(s, header=h)
+            df2 = df2.dropna(how="all").copy()
+            df2 = _normalize_columns(df2)
+            # keep only relevant columns if present
+            keep = [c for c in ["CAMPANHA","SECRETARIA","AGÊNCIA","VALOR DO ESPELHO","PROCESSO","EMPENHO","DATA DO EMPENHO","OBSERVAÇÃO"] if c in df2.columns]
+            if len(keep) >= 2:
+                df2 = df2[keep]
+                # remove subheader repeated rows
+                df2 = df2[df2.apply(lambda r: not any(str(x).upper() in tokens for x in r.values), axis=1)]
+                # annotate sheet/month
+                mes = _month_from_sheet(s)
+                if mes:
+                    df2["COMPETÊNCIA"] = f"2025-{mes}"
+                else:
+                    df2["COMPETÊNCIA"] = s
+                blocks.append(df2)
+        except Exception:
+            continue
+    return blocks
+
+def _load_planilha_2025(path: str) -> pd.DataFrame:
+    xl = pd.ExcelFile(path)
+    frames = []
+    for s in xl.sheet_names:
+        frames.extend(_read_blocks_from_sheet(xl, s))
+    if frames:
+        out = pd.concat(frames, ignore_index=True, sort=False)
+        # Clean value
+        if "VALOR DO ESPELHO" in out.columns:
+            out["VALOR DO ESPELHO"] = pd.to_numeric(out["VALOR DO ESPELHO"], errors="coerce").fillna(0.0)
+        # Coerce date if available
+        if "DATA DO EMPENHO" in out.columns:
+            out["DATA DO EMPENHO"] = pd.to_datetime(out["DATA DO EMPENHO"], errors="coerce", dayfirst=True)
+        return out
+    return pd.DataFrame(columns=["CAMPANHA","SECRETARIA","AGÊNCIA","VALOR DO ESPELHO","PROCESSO","EMPENHO","DATA DO EMPENHO","COMPETÊNCIA","OBSERVAÇÃO"])
 MISSING_DATA_WARNING = ''
 
 def _load_data() -> pd.DataFrame:
-    global MISSING_DATA_WARNING
-    expected_cols = [
-        "CAMPANHA","SECRETARIA","AGÊNCIA","ESPELHO DIANA","ESPELHO","PDF",
-        "VALOR DO ESPELHO","PROCESSO","EMPENHO","DATA DO EMPENHO","COMPETÊNCIA","OBSERVAÇÃO"
-    ]
     try:
-        if not os.path.exists(EXCEL_PATH):
-            MISSING_DATA_WARNING = f"Arquivo não encontrado em: {EXCEL_PATH}. Configure a env var EXCEL_PATH ou envie a planilha para ./data/."
-            return pd.DataFrame(columns=expected_cols)
         df = pd.read_excel(EXCEL_PATH, sheet_name=SHEET_NAME)
-    except Exception as e:
-        MISSING_DATA_WARNING = f"Falha ao ler o Excel: {e}" 
-        return pd.DataFrame(columns=expected_cols)
-    # Normaliza nomes esperados conforme a planilha enviada
+    except Exception:
+        # Try flexible parser for multi-sheet 2025 workbook
+        return _load_planilha_2025(EXCEL_PATH).fillna("")
+    # If columns are all Unnamed or missing expected columns, fallback
+    if all(str(c).startswith("Unnamed") for c in df.columns) or len(set(df.columns) & set(["SECRETARIA","AGÊNCIA","VALOR DO ESPELHO","PROCESSO"])) < 2:
+        return _load_planilha_2025(EXCEL_PATH).fillna("")
+
+    # --- Original normalization for classic planilha ---
     expected = [
         "CAMPANHA","SECRETARIA","AGÊNCIA","ESPELHO DIANA","ESPELHO","PDF",
         "VALOR DO ESPELHO","PROCESSO","EMPENHO","DATA DO EMPENHO","COMPETÊNCIA","OBSERVAÇÃO"
     ]
-    # Garante presença das colunas esperadas (se faltarem, cria vazias)
     for col in expected:
         if col not in df.columns:
             df[col] = None
 
-    # Tipos
     if "VALOR DO ESPELHO" in df.columns:
         df["VALOR DO ESPELHO"] = pd.to_numeric(df["VALOR DO ESPELHO"], errors="coerce").fillna(0.0)
 
     if "DATA DO EMPENHO" in df.columns:
         df["DATA DO EMPENHO"] = _try_parse_date(df["DATA DO EMPENHO"])
 
-    # Competência (tentar normalizar para período YYYY-MM)
     if "COMPETÊNCIA" in df.columns:
         comp = df["COMPETÊNCIA"].astype(str).str.strip()
-        # Tenta converter 05/2025 ou Mai/2025 para período, caindo para texto
         comp_dt = pd.to_datetime(comp, errors="coerce", format="%m/%Y")
-        # fallback: tenta dd/mm/aaaa
         comp_dt2 = pd.to_datetime(comp, errors="coerce", dayfirst=True)
         df["COMPETÊNCIA_DT"] = comp_dt.fillna(comp_dt2)
         df["COMPETÊNCIA_TXT"] = comp.where(df["COMPETÊNCIA_DT"].isna(), df["COMPETÊNCIA_DT"].dt.to_period("M").astype(str))
@@ -89,12 +163,10 @@ def _load_data() -> pd.DataFrame:
         df["COMPETÊNCIA_DT"] = pd.NaT
         df["COMPETÊNCIA_TXT"] = ""
 
-    # Links
     for col in ["ESPELHO DIANA","ESPELHO","PDF","PROCESSO","EMPENHO"]:
         if col in df.columns:
             df[col] = df[col].astype(str)
 
-    # Linhas “vazias” (sem secretaria e sem agência e sem campanha e sem processo) não ajudam => dropa
     df = df[~(
         df["SECRETARIA"].isna() & df["AGÊNCIA"].isna() & df["CAMPANHA"].isna() & df["PROCESSO"].isna()
     )].copy()
@@ -139,7 +211,7 @@ app.layout = html.Div(className="light", id="root", children=[
             html.Div(className="brand", children=[html.Div("📑", style={"fontSize":"20px"}), html.H1("Controle de Processos — SECOM"), html.Span("v1.0", className="badge")]),
             html.Div(className="actions", children=[
                 dcc.RadioItems(
-                    id="theme", value="secom-light", inline=True,
+                    id="theme", value="light", inline=True,
                     options=[
                         {"label": "Claro", "value": "light"},
                         {"label": "Escuro", "value": "dark"},
@@ -254,6 +326,7 @@ def show_warn(_):
     return MISSING_DATA_WARNING
 
 def set_theme(theme):
+    # Force default to light when None/invalid
     return theme if theme in {"light","dark","secom-light","secom-dark"} else "light"
 
 @app.callback(
@@ -281,6 +354,8 @@ def set_theme(theme):
 def atualizar(f_sec, f_ag, f_camp, f_comp, dt_ini, dt_fim, busca, sort, n_reload, theme):
     base = _load_data() if (n_reload and n_reload>0) else DF_BASE
     dff = _filtrar(base, f_sec, f_ag, f_camp, f_comp, dt_ini, dt_fim, busca)
+    if "COMPETÊNCIA_TXT" not in dff.columns:
+        dff["COMPETÊNCIA_TXT"] = dff.get("COMPETÊNCIA", "")
     asc = (sort == "asc")
 
     total = len(dff)
@@ -290,11 +365,15 @@ def atualizar(f_sec, f_ag, f_camp, f_comp, dt_ini, dt_fim, busca, sort, n_reload
     k_ag = int(dff["AGÊNCIA"].nunique())
 
     # Valor por Secretaria (Top 10)
-    g1 = dff.groupby("SECRETARIA", as_index=False)["VALOR DO ESPELHO"].sum().rename(columns={"VALOR DO ESPELHO":"Valor"})
-    g1 = g1.sort_values("Valor", ascending=False).head(10).sort_values("Valor", ascending=asc)
-    fig1 = px.bar(g1, x="SECRETARIA", y="Valor", text="Valor", title="Valor por Secretaria (Top 10)")
-    fig1.update_traces(texttemplate="%{text:.0f}")
-    style_fig(fig1, theme)
+    if "SECRETARIA" in dff.columns and dff["SECRETARIA"].notna().any():
+        g1 = dff.groupby("SECRETARIA", as_index=False)["VALOR DO ESPELHO"].sum().rename(columns={"VALOR DO ESPELHO":"Valor"})
+        g1 = g1.sort_values("Valor", ascending=False).head(10).sort_values("Valor", ascending=asc)
+        fig1 = px.bar(g1, x="SECRETARIA", y="Valor", text="Valor", title="Valor por Secretaria (Top 10)")
+        fig1.update_traces(texttemplate="%{text:.0f}")
+        style_fig(fig1, theme)
+    else:
+        fig1 = px.bar(title="Valor por Secretaria (sem dados)")
+        style_fig(fig1, theme)
 
     # Valor por Agência (Top 10)
     g2 = dff.groupby("AGÊNCIA", as_index=False)["VALOR DO ESPELHO"].sum().rename(columns={"VALOR DO ESPELHO":"Valor"})
