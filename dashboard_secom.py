@@ -417,9 +417,33 @@ def _filtrar(df: pd.DataFrame, f_sec, f_ag, f_camp, f_comp, dt_ini, dt_fim, busc
 
 @app.callback(Output("root","className"), Input("theme","value"))
 
-@app.callback(Output("warn","children"), Input("btn-reload","n_clicks"))
-def show_warn(_):
-    return MISSING_DATA_WARNING
+
+@app.callback(
+    Output("warn","children"),
+    Output("f_secretaria","options"),
+    Output("f_agencia","options"),
+    Output("f_campanha","options"),
+    Output("f_comp","options"),
+    Output("date_range","min_date_allowed"),
+    Output("date_range","max_date_allowed"),
+    Output("date_range","start_date"),
+    Output("date_range","end_date"),
+    Input("btn-reload","n_clicks"),
+    prevent_initial_call=True
+)
+def reload_data(_):
+    global DF_BASE, MISSING_DATA_WARNING
+    DF_BASE = _load_data()
+    msg = MISSING_DATA_WARNING or f"Dados recarregados: {len(DF_BASE)} linhas."
+    dmin, dmax = _date_bounds(DF_BASE)
+    return (
+        msg,
+        _options_for(DF_BASE, "SECRETARIA"),
+        _options_for(DF_BASE, "AGÊNCIA"),
+        _options_for(DF_BASE, "CAMPANHA"),
+        _options_for(DF_BASE, "COMPETÊNCIA_TXT"),
+        dmin, dmax, dmin, dmax,
+    )
 
 def set_theme(theme):
     # Force default to light when None/invalid
