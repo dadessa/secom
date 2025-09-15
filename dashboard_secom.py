@@ -310,16 +310,16 @@ app.layout = html.Div(className="light", id="root", children=[
         html.Div(className="panel", children=[
             html.Div(className="filters", children=[
                 html.Div(children=[html.Div("Secretaria", className="label"),
-                    dcc.Dropdown(id="f_secretaria", options=[{"label": s, "value": s} for s in sorted(DF_BASE["SECRETARIA"].unique()) if s], multi=True, placeholder="Selecione…")
+                    dcc.Dropdown(id="f_secretaria", options=_options_for(DF_BASE, "SECRETARIA"), multi=True, placeholder="Selecione…")
                 ]),
                 html.Div(children=[html.Div("Agência", className="label"),
-                    dcc.Dropdown(id="f_agencia", options=[{"label": s, "value": s} for s in sorted(DF_BASE["AGÊNCIA"].unique()) if s], multi=True, placeholder="Selecione…")
+                    dcc.Dropdown(id="f_agencia", options=_options_for(DF_BASE, "AGÊNCIA"), multi=True, placeholder="Selecione…")
                 ]),
                 html.Div(children=[html.Div("Campanha", className="label"),
-                    dcc.Dropdown(id="f_campanha", options=[{"label": s, "value": s} for s in sorted(DF_BASE["CAMPANHA"].unique()) if s], multi=True, placeholder="Selecione…")
+                    dcc.Dropdown(id="f_campanha", options=_options_for(DF_BASE, "CAMPANHA"), multi=True, placeholder="Selecione…")
                 ]),
                 html.Div(children=[html.Div("Competência (Mês)", className="label"),
-                    dcc.Dropdown(id="f_comp", options=[{"label": s, "value": s} for s in sorted(DF_BASE["COMPETÊNCIA_TXT"].unique()) if s], multi=True, placeholder="Ex.: 2025-05…")
+                    dcc.Dropdown(id="f_comp", options=_options_for(DF_BASE, "COMPETÊNCIA_TXT"), multi=True, placeholder="Ex.: 2025-05…")
                 ]),
                 html.Div(children=[html.Div("Período — Data do Empenho", className="label"),
                     dcc.DatePickerRange(id="f_empenho_range",
