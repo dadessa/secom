@@ -343,7 +343,6 @@ app.layout = html.Div(className="light", id="root", children=[
     start_date=_date_bounds(DF_BASE)[0],
     end_date=_date_bounds(DF_BASE)[1],
 ),
-                    )
                 ]),
                 html.Div(children=[html.Div("Buscar por Processo / Observação", className="label"),
                     dcc.Input(id="f_busca", type="text", placeholder="Digite para filtrar…", debounce=True)
