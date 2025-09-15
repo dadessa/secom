@@ -426,19 +426,29 @@ def export_pdf(n, f_sec, f_ag, f_camp, f_comp, dt_ini, dt_fim, busca):
 
 # ========= STYLES =========
 
+
 app.index_string = """
 <!doctype html>
 <html>
   <head>
+    {%metas%}
     <meta charset="utf-8">
     <title>Controle de Processos — SECOM</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {%favicon%}
+    {%css%}
   </head>
   <body>
-    <div id="root">Loading…</div>
+    {%app_entry%}
+    <footer>
+      {%config%}
+      {%scripts%}
+      {%renderer%}
+    </footer>
   </body>
 </html>
 """
+
 
 
 if __name__ == "__main__":
