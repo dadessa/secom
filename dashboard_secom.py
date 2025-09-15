@@ -105,6 +105,25 @@ def _normalize_columns(df: pd.DataFrame):
             ren[c] = "DATA DO EMPENHO"
     return df.rename(columns=ren)
 
+def _coalesce_duplicate_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """If there are duplicate column names, combine them preferring first non-null/non-empty, then drop extras."""
+    from collections import Counter
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+    df = df.dropna(axis=1, how="all")
+    counts = Counter(df.columns)
+    for name, cnt in counts.items():
+        if cnt > 1:
+            dup_cols = [c for c in df.columns if c == name]
+            base = df[dup_cols[0]]
+            for c in dup_cols[1:]:
+                base = base.where(base.notna() & (base.astype(str).str.strip() != ""), df[c])
+            df[name] = base
+            df.drop(columns=dup_cols[1:], inplace=True, errors="ignore")
+    drop_cols = [c for c in df.columns if str(c).startswith("Unnamed") or str(c).strip().lower() in {"", "nan"}]
+    df = df.drop(columns=drop_cols, errors="ignore")
+    return df
+
 def _read_blocks_from_sheet(xl: pd.ExcelFile, s: str) -> list[pd.DataFrame]:
     raw = xl.parse(s, header=None)
     raw_str = raw.astype(str).replace("nan","")
@@ -122,10 +141,12 @@ def _read_blocks_from_sheet(xl: pd.ExcelFile, s: str) -> list[pd.DataFrame]:
             df2 = xl.parse(s, header=h)
             df2 = df2.dropna(how="all").copy()
             df2 = _normalize_columns(df2)
+            df2 = _coalesce_duplicate_columns(df2)
             # keep only relevant columns if present
             keep = [c for c in ["CAMPANHA","SECRETARIA","AGÊNCIA","VALOR DO ESPELHO","PROCESSO","EMPENHO","DATA DO EMPENHO","OBSERVAÇÃO"] if c in df2.columns]
             if len(keep) >= 2:
                 df2 = df2[keep]
+                df2 = _coalesce_duplicate_columns(df2)
                 # remove subheader repeated rows
                 df2 = df2[df2.apply(lambda r: not any(str(x).upper() in tokens for x in r.values), axis=1)]
                 # annotate sheet/month
