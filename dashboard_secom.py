@@ -331,11 +331,7 @@ DF_BASE = _load_data()
 # ========= TEMA =========
 THEME = {
     "light": {"template": "plotly_white", "font": "#0F172A", "grid": "#E9EDF5"},
-    "dark":  {"template": "plotly_dark",  "font": "#E6ECFF", "grid": "#22304A"}
-},
     "dark":  {"template": "plotly_dark",  "font": "#E6ECFF", "grid": "#22304A"},
-    "secom-light": {"template": "plotly_white", "font": "#0A1224", "grid": "#E4EAF5"},
-    "secom-dark": {"template": "plotly_dark", "font": "#E7EDF8", "grid": "#24324E"}
 }
 
 def style_fig(fig, theme="light"):
