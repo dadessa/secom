@@ -19,7 +19,36 @@ from dash.dash_table.Format import Format, Group, Scheme
 import plotly.express as px
 
 EXCEL_PATH = os.environ.get("EXCEL_PATH", os.path.join("data", "PLANILHA 2025 (1).xlsx"))
+.xlsx"))
 SHEET_NAME = os.environ.get("SHEET_NAME", "CONTROLE DE PROCESSOS - GERAL")
+
+MISSING_DATA_WARNING = ""
+
+def _resolve_excel_path():
+    """
+    Returns a valid path to an Excel workbook if found, otherwise None.
+    Priority: env EXCEL_PATH -> known filenames -> first .xlsx in ./data
+    """
+    candidates = []
+    if EXCEL_PATH:
+        candidates.append(EXCEL_PATH)
+    candidates += [
+        os.path.join("data", "PLANILHA 2025 (1).xlsx"),
+        os.path.join("data", "CONTROLE DE PROCESSOS SECOM.xlsx"),
+    ]
+    data_dir = os.path.join("data")
+    if os.path.isdir(data_dir):
+        for fn in os.listdir(data_dir):
+            if fn.lower().endswith(".xlsx"):
+                candidates.append(os.path.join(data_dir, fn))
+
+    for p in candidates:
+        try:
+            if p and os.path.exists(p):
+                return p
+        except Exception:
+            continue
+    return None
 
 # ========= HELPERS =========
 def _try_parse_date(series: pd.Series):
@@ -112,16 +141,21 @@ def _read_blocks_from_sheet(xl: pd.ExcelFile, s: str) -> list[pd.DataFrame]:
     return blocks
 
 def _load_planilha_2025(path: str) -> pd.DataFrame:
-    xl = pd.ExcelFile(path)
+    try:
+        if not path or not os.path.exists(path):
+            raise FileNotFoundError(f"Arquivo não encontrado: {path}")
+        xl = pd.ExcelFile(path)
+    except Exception as e:
+        global MISSING_DATA_WARNING
+        MISSING_DATA_WARNING = f"Não foi possível abrir a planilha em '{path}': {e}"
+        return pd.DataFrame(columns=["CAMPANHA","SECRETARIA","AGÊNCIA","VALOR DO ESPELHO","PROCESSO","EMPENHO","DATA DO EMPENHO","COMPETÊNCIA","OBSERVAÇÃO"])
     frames = []
     for s in xl.sheet_names:
         frames.extend(_read_blocks_from_sheet(xl, s))
     if frames:
         out = pd.concat(frames, ignore_index=True, sort=False)
-        # Clean value
         if "VALOR DO ESPELHO" in out.columns:
             out["VALOR DO ESPELHO"] = pd.to_numeric(out["VALOR DO ESPELHO"], errors="coerce").fillna(0.0)
-        # Coerce date if available
         if "DATA DO EMPENHO" in out.columns:
             out["DATA DO EMPENHO"] = pd.to_datetime(out["DATA DO EMPENHO"], errors="coerce", dayfirst=True)
         return out
@@ -129,16 +163,23 @@ def _load_planilha_2025(path: str) -> pd.DataFrame:
 MISSING_DATA_WARNING = ''
 
 def _load_data() -> pd.DataFrame:
-    try:
-        df = pd.read_excel(EXCEL_PATH, sheet_name=SHEET_NAME)
-    except Exception:
-        # Try flexible parser for multi-sheet 2025 workbook
-        return _load_planilha_2025(EXCEL_PATH).fillna("")
-    # If columns are all Unnamed or missing expected columns, fallback
-    if all(str(c).startswith("Unnamed") for c in df.columns) or len(set(df.columns) & set(["SECRETARIA","AGÊNCIA","VALOR DO ESPELHO","PROCESSO"])) < 2:
-        return _load_planilha_2025(EXCEL_PATH).fillna("")
+    global MISSING_DATA_WARNING
+    path = _resolve_excel_path()
+    if not path:
+        MISSING_DATA_WARNING = "Nenhuma planilha .xlsx encontrada. Envie o arquivo para ./data/ ou configure a variável EXCEL_PATH."
+        return pd.DataFrame(columns=["CAMPANHA","SECRETARIA","AGÊNCIA","VALOR DO ESPELHO","PROCESSO","EMPENHO","DATA DO EMPENHO","COMPETÊNCIA","OBSERVAÇÃO"])
 
-    # --- Original normalization for classic planilha ---
+    # 1) Tenta leitura "clássica" (aba consolidada)
+    try:
+        df = pd.read_excel(path, sheet_name=SHEET_NAME)
+        # Se veio todo 'Unnamed', caia para o parser flexível
+        if all(str(c).startswith("Unnamed") for c in df.columns):
+            raise ValueError("Cabeçalho não reconhecido na aba consolidada.")
+    except Exception:
+        # 2) Parser flexível para a planilha 2025 (múltiplas abas/headers)
+        return _load_planilha_2025(path).fillna("")
+
+    # Normalização do formato clássico
     expected = [
         "CAMPANHA","SECRETARIA","AGÊNCIA","ESPELHO DIANA","ESPELHO","PDF",
         "VALOR DO ESPELHO","PROCESSO","EMPENHO","DATA DO EMPENHO","COMPETÊNCIA","OBSERVAÇÃO"
