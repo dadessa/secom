@@ -77,6 +77,17 @@ def _fmt_currency(v) -> str:
         return "R$ 0,00"
 
 
+def _date_bounds(df: pd.DataFrame):
+    try:
+        if 'DATA DO EMPENHO' in df.columns and pd.api.types.is_datetime64_any_dtype(df['DATA DO EMPENHO']):
+            col = df['DATA DO EMPENHO'].dropna()
+            if col.empty:
+                return None, None
+            return pd.to_datetime(col.min()).to_pydatetime(), pd.to_datetime(col.max()).to_pydatetime()
+    except Exception:
+        pass
+    return None, None
+
 def _options_for(df: pd.DataFrame, col: str):
     if col not in df.columns:
         return []
