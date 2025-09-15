@@ -18,7 +18,7 @@ from dash import Input, Output, State
 from dash.dash_table.Format import Format, Group, Scheme
 import plotly.express as px
 
-EXCEL_PATH = os.environ.get("EXCEL_PATH", "CONTROLE DE PROCESSOS SECOM.xlsx")
+EXCEL_PATH = os.environ.get("EXCEL_PATH", os.path.join("data", "CONTROLE DE PROCESSOS SECOM.xlsx"))
 SHEET_NAME = os.environ.get("SHEET_NAME", "CONTROLE DE PROCESSOS - GERAL")
 
 # ========= HELPERS =========
@@ -43,8 +43,22 @@ def _fmt_currency(v) -> str:
     except Exception:
         return "R$ 0,00"
 
+MISSING_DATA_WARNING = ''
+
 def _load_data() -> pd.DataFrame:
-    df = pd.read_excel(EXCEL_PATH, sheet_name=SHEET_NAME)
+    global MISSING_DATA_WARNING
+    expected_cols = [
+        "CAMPANHA","SECRETARIA","AGÊNCIA","ESPELHO DIANA","ESPELHO","PDF",
+        "VALOR DO ESPELHO","PROCESSO","EMPENHO","DATA DO EMPENHO","COMPETÊNCIA","OBSERVAÇÃO"
+    ]
+    try:
+        if not os.path.exists(EXCEL_PATH):
+            MISSING_DATA_WARNING = f"Arquivo não encontrado em: {EXCEL_PATH}. Configure a env var EXCEL_PATH ou envie a planilha para ./data/."
+            return pd.DataFrame(columns=expected_cols)
+        df = pd.read_excel(EXCEL_PATH, sheet_name=SHEET_NAME)
+    except Exception as e:
+        MISSING_DATA_WARNING = f"Falha ao ler o Excel: {e}" 
+        return pd.DataFrame(columns=expected_cols)
     # Normaliza nomes esperados conforme a planilha enviada
     expected = [
         "CAMPANHA","SECRETARIA","AGÊNCIA","ESPELHO DIANA","ESPELHO","PDF",
@@ -118,6 +132,7 @@ def kpi_card(id_, label):
     ])
 
 app.layout = html.Div(className="light", id="root", children=[
+    html.Div(id="warn", style={"margin":"8px 0","color":"#b91c1c"}),
     html.Div(className="container", children=[
         # Navbar
         html.Div(className="navbar", children=[
@@ -233,6 +248,11 @@ def _filtrar(df: pd.DataFrame, f_sec, f_ag, f_camp, f_comp, dt_ini, dt_fim, busc
     return dff
 
 @app.callback(Output("root","className"), Input("theme","value"))
+
+@app.callback(Output("warn","children"), Input("btn-reload","n_clicks"))
+def show_warn(_):
+    return MISSING_DATA_WARNING
+
 def set_theme(theme):
     return theme if theme in {"light","dark","secom-light","secom-dark"} else "light"
 
