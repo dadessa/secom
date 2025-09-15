@@ -67,6 +67,20 @@ def _fmt_currency(v) -> str:
     try:
         v = float(v)
         if math.isnan(v): return "R$ 0,00"
+
+def _options_for(df: pd.DataFrame, col: str):
+    if col not in df.columns:
+        return []
+    s = df[col]
+    try:
+        s = s.dropna().astype(str).map(lambda x: x.strip()).replace({"nan": ""})
+    except Exception:
+        s = pd.Series([], dtype=str)
+    vals = [v for v in s.tolist() if v != ""]
+    # unique + sorted case-insensitive
+    vals = sorted(set(vals), key=lambda x: x.casefold())
+    return [{"label": v, "value": v} for v in vals]
+
         return "R$ " + ("{:,.2f}".format(v)).replace(",", "X").replace(".", ",").replace("X", ".")
     except Exception:
         return "R$ 0,00"
