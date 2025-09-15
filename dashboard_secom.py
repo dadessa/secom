@@ -333,9 +333,16 @@ app.layout = html.Div(className="light", id="root", children=[
                     dcc.Dropdown(id="f_comp", options=_options_for(DF_BASE, "COMPETÊNCIA_TXT"), multi=True, placeholder="Ex.: 2025-05…")
                 ]),
                 html.Div(children=[html.Div("Período — Data do Empenho", className="label"),
-                    dcc.DatePickerRange(id="f_empenho_range",
-                        min_date_allowed=DF_BASE["DATA DO EMPENHO"].min() if (DF_BASE["DATA DO EMPENHO"].dtype.kind=="M") else None,
-                        max_date_allowed=DF_BASE["DATA DO EMPENHO"].max() if (DF_BASE["DATA DO EMPENHO"].dtype.kind=="M") else None,
+                    dcc.DatePickerRange(
+    id="date_range",
+    display_format="DD/MM/YYYY",
+    start_date_placeholder_text="Data inicial",
+    end_date_placeholder_text="Data final",
+    min_date_allowed=_date_bounds(DF_BASE)[0],
+    max_date_allowed=_date_bounds(DF_BASE)[1],
+    start_date=_date_bounds(DF_BASE)[0],
+    end_date=_date_bounds(DF_BASE)[1],
+),
                     )
                 ]),
                 html.Div(children=[html.Div("Buscar por Processo / Observação", className="label"),
