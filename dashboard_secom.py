@@ -18,7 +18,7 @@ from dash import Input, Output, State
 from dash.dash_table.Format import Format, Group, Scheme
 import plotly.express as px
 
-EXCEL_PATH = os.environ.get("EXCEL_PATH", os.path.join("data", "PLANILHA 2025 (1).xlsx")))
+EXCEL_PATH = os.environ.get("EXCEL_PATH", os.path.join("data", "PLANILHA 2025 (1).xlsx"))
 SHEET_NAME = os.environ.get("SHEET_NAME", "CONTROLE DE PROCESSOS - GERAL")
 
 # ========= HELPERS =========
