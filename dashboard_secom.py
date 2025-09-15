@@ -19,6 +19,10 @@ from dash.dash_table.Format import Format, Group, Scheme
 import plotly.express as px
 
 EXCEL_PATH = os.environ.get("EXCEL_PATH", os.path.join("data", "PLANILHA 2025 (1).xlsx"))
+EXCEL_URL = os.environ.get("EXCEL_URL", "").strip()
+EXCEL_BEARER_TOKEN = os.environ.get("EXCEL_BEARER_TOKEN", "").strip()
+EXCEL_HTTP_USERNAME = os.environ.get("EXCEL_HTTP_USERNAME", "").strip()
+EXCEL_HTTP_PASSWORD = os.environ.get("EXCEL_HTTP_PASSWORD", "").strip()
 SHEET_NAME = os.environ.get("SHEET_NAME", "CONTROLE DE PROCESSOS - GERAL")
 
 MISSING_DATA_WARNING = ""
@@ -89,6 +93,52 @@ def _date_bounds(df: pd.DataFrame):
     return None, None
 
 def _options_for(df: pd.DataFrame, col: str):
+
+def _normalize_excel_url(url: str) -> str:
+    """Normalize common providers to direct-download URLs."""
+    u = (url or "").strip()
+    if not u:
+        return u
+    # Dropbox: dl=1 for direct download
+    if "dropbox.com" in u:
+        if "dl=0" in u: u = u.replace("dl=0", "dl=1")
+        elif "dl=1" not in u and "raw=1" not in u:
+            sep = "&" if "?" in u else "?"
+            u = f"{u}{sep}dl=1"
+    # Google Drive: convert /d/<id>/ to uc?export=download&id=<id>
+    if "drive.google.com" in u:
+        import re as _re
+        m = _re.search(r"/d/([a-zA-Z0-9_-]{20,})", u)
+        if not m:
+            m = _re.search(r"[?&]id=([a-zA-Z0-9_-]{20,})", u)
+        if m:
+            fid = m.group(1)
+            u = f"https://drive.google.com/uc?export=download&id={fid}"
+    # OneDrive/SharePoint: try forcing download
+    if "onedrive.live.com" in u or "sharepoint.com" in u:
+        if "download=1" not in u and "download=1" not in u.lower():
+            sep = "&" if "?" in u else "?"
+            u = f"{u}{sep}download=1"
+    return u
+
+def _download_excel_bytes(url: str):
+    """Download the Excel file to memory. Supports optional Bearer or Basic auth via env vars."""
+    import requests, io, base64
+    u = _normalize_excel_url(url)
+    headers = {
+        "User-Agent": "SECOM-Dashboard/1.0",
+        "Accept": "*/*",
+    }
+    auth = None
+    if EXCEL_BEARER_TOKEN:
+        headers["Authorization"] = f"Bearer {EXCEL_BEARER_TOKEN}"
+    elif EXCEL_HTTP_USERNAME and EXCEL_HTTP_PASSWORD:
+        auth = (EXCEL_HTTP_USERNAME, EXCEL_HTTP_PASSWORD)
+    r = requests.get(u, headers=headers, auth=auth, timeout=45)
+    r.raise_for_status()
+    return io.BytesIO(r.content)
+
+
     if col not in df.columns:
         return []
     s = df[col]
@@ -213,19 +263,32 @@ MISSING_DATA_WARNING = ''
 
 def _load_data() -> pd.DataFrame:
     global MISSING_DATA_WARNING
+    # 0) Prefer EXCEL_URL if provided
+    if EXCEL_URL:
+        try:
+            buf = _download_excel_bytes(EXCEL_URL)
+            dfurl = _load_from_excel_bytes(buf)
+            if not dfurl.empty:
+                return dfurl.fillna("")
+            else:
+                MISSING_DATA_WARNING = MISSING_DATA_WARNING or "Planilha remota vazia ou não reconhecida."
+        except Exception as e:
+            MISSING_DATA_WARNING = f"Falha ao baixar a planilha da URL: {e}"
+            # segue para fallback local
+
+    # 1) Resolver local (mantém compatibilidade)
     path = _resolve_excel_path()
     if not path:
-        MISSING_DATA_WARNING = "Nenhuma planilha .xlsx encontrada. Envie o arquivo para ./data/ ou configure a variável EXCEL_PATH."
+        MISSING_DATA_WARNING = MISSING_DATA_WARNING or "Nenhuma planilha .xlsx encontrada localmente e EXCEL_URL não disponível."
         return pd.DataFrame(columns=["CAMPANHA","SECRETARIA","AGÊNCIA","VALOR DO ESPELHO","PROCESSO","EMPENHO","DATA DO EMPENHO","COMPETÊNCIA","OBSERVAÇÃO"])
 
-    # 1) Tenta leitura "clássica" (aba consolidada)
+    # 2) Tenta leitura clássica
     try:
         df = pd.read_excel(path, sheet_name=SHEET_NAME)
-        # Se veio todo 'Unnamed', caia para o parser flexível
         if all(str(c).startswith("Unnamed") for c in df.columns):
             raise ValueError("Cabeçalho não reconhecido na aba consolidada.")
     except Exception:
-        # 2) Parser flexível para a planilha 2025 (múltiplas abas/headers)
+        # 3) Parser flexível para múltiplas abas
         return _load_planilha_2025(path).fillna("")
 
     # Normalização do formato clássico
@@ -268,6 +331,8 @@ DF_BASE = _load_data()
 # ========= TEMA =========
 THEME = {
     "light": {"template": "plotly_white", "font": "#0F172A", "grid": "#E9EDF5"},
+    "dark":  {"template": "plotly_dark",  "font": "#E6ECFF", "grid": "#22304A"}
+},
     "dark":  {"template": "plotly_dark",  "font": "#E6ECFF", "grid": "#22304A"},
     "secom-light": {"template": "plotly_white", "font": "#0A1224", "grid": "#E4EAF5"},
     "secom-dark": {"template": "plotly_dark", "font": "#E7EDF8", "grid": "#24324E"}
@@ -302,12 +367,7 @@ app.layout = html.Div(className="light", id="root", children=[
             html.Div(className="actions", children=[
                 dcc.RadioItems(
                     id="theme", value="light", inline=True,
-                    options=[
-                        {"label": "Claro", "value": "light"},
-                        {"label": "Escuro", "value": "dark"},
-                        {"label": "SECOM (Claro)", "value": "secom-light"},
-                        {"label": "SECOM (Escuro)", "value": "secom-dark"}
-                    ],
+                    options=[{"label": "Claro", "value": "light"}, {"label": "Escuro", "value": "dark"}],
                     inputStyle={"marginRight":"6px","marginLeft":"10px"},
                 ),
                 html.Button("Atualizar dados", id="btn-reload", n_clicks=0, className="btn ghost"),
@@ -447,7 +507,7 @@ def reload_data(_):
 
 def set_theme(theme):
     # Force default to light when None/invalid
-    return theme if theme in {"light","dark","secom-light","secom-dark"} else "light"
+    return theme if theme in {"light","dark"} else "light"
 
 @app.callback(
     Output("kpi_total","children"),
@@ -676,3 +736,23 @@ if __name__ == "__main__":
         app.run(debug=True, host="0.0.0.0", port=port)
     except AttributeError:
         app.run_server(debug=True, host="0.0.0.0", port=port)
+
+def _load_from_excel_bytes(buf) -> pd.DataFrame:
+    try:
+        xl = pd.ExcelFile(buf)
+    except Exception as e:
+        global MISSING_DATA_WARNING
+        MISSING_DATA_WARNING = f"Não foi possível abrir a planilha da URL: {e}"
+        return pd.DataFrame(columns=["CAMPANHA","SECRETARIA","AGÊNCIA","VALOR DO ESPELHO","PROCESSO","EMPENHO","DATA DO EMPENHO","COMPETÊNCIA","OBSERVAÇÃO"])
+    frames = []
+    for s in xl.sheet_names:
+        frames.extend(_read_blocks_from_sheet(xl, s))
+    if frames:
+        out = pd.concat(frames, ignore_index=True, sort=False)
+        if "VALOR DO ESPELHO" in out.columns:
+            out["VALOR DO ESPELHO"] = pd.to_numeric(out["VALOR DO ESPELHO"], errors="coerce").fillna(0.0)
+        if "DATA DO EMPENHO" in out.columns:
+            out["DATA DO EMPENHO"] = pd.to_datetime(out["DATA DO EMPENHO"], errors="coerce", dayfirst=True)
+        return out
+    return pd.DataFrame(columns=["CAMPANHA","SECRETARIA","AGÊNCIA","VALOR DO ESPELHO","PROCESSO","EMPENHO","DATA DO EMPENHO","COMPETÊNCIA","OBSERVAÇÃO"])
+
