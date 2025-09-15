@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: secom-dashboard
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn dashboard_secom:server --workers 2 --threads 8 --timeout 120
+    envVars:
+      - key: EXCEL_PATH
+        value: ./data/CONTROLE DE PROCESSOS SECOM.xlsx
+      - key: SHEET_NAME
+        value: CONTROLE DE PROCESSOS - GERAL

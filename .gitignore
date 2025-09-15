@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.build/
+dist/
+.eggs/
+*.egg-info/
+.venv/
+venv/
+.env
+
+# macOS / OS
+.DS_Store
+
+# Data
+data/*
+!data/.gitkeep
+
+# Planilhas fora do /data
+*.xlsx
+*.xls

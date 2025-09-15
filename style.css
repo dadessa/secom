@@ -1,0 +1,90 @@
+
+/* ===============================
+   SECOM Dashboard — Global Styles
+   =============================== */
+:root {
+  --radius: 12px;
+}
+.light { --bg: #F3F6FC; --card: #fff; --text: #0F172A; --muted:#64748B; }
+.dark  { --bg: #0b1220; --card: #0f1b2e; --text: #E6ECFF; --muted:#93A3BE; }
+
+/* Reset / base */
+html, body { margin:0; padding:0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#0b1220; }
+#root { background: var(--bg); color: var(--text); min-height: 100vh; }
+
+/* Layout */
+.container { max-width: 1280px; margin: 0 auto; padding: 16px; }
+.navbar { display:flex; align-items:center; justify-content:space-between; margin-bottom: 12px; gap: 12px; }
+.brand { display:flex; align-items:center; gap:10px; }
+.brand h1 { font-size: 18px; margin: 0; }
+.badge { background: #2563EB; color:#fff; padding:2px 8px; border-radius: 999px; font-size: 12px; }
+
+.actions .btn { margin-left: 6px; padding: 8px 12px; border-radius: 8px; border: 1px solid #1f2b40; background: #1b2943; color: #fff; cursor: pointer; }
+.actions .btn:hover { filter: brightness(1.05); transform: translateY(-1px); transition: .15s ease; }
+.actions .btn.ghost { background: transparent; color: var(--text); border-color: #2C3B57; }
+
+.panel { background: var(--card); padding: 12px; border-radius: var(--radius); margin-bottom: 12px; }
+.filters { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+
+.kpis { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.card { background: var(--card); border-radius: var(--radius); padding: 12px; }
+.kpi .kpi-title { color: var(--muted); margin: 0; font-size: 12px; }
+.kpi .kpi-value { margin: 6px 0 0; font-size: 24px; }
+
+.grid-2 { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+@media (max-width: 900px) {
+  .filters{ grid-template-columns: 1fr; }
+  .kpis{ grid-template-columns: repeat(2, 1fr); }
+  .grid-2{ grid-template-columns: 1fr; }
+}
+
+/* DataTable tweaks */
+.dash-table-container .row { margin: 0; }
+.dash-table-container table { width: 100%; }
+.dash-table-container a { color: #2563EB; text-decoration: none; }
+.dash-table-container a:hover { text-decoration: underline; }
+
+/* Graph sizing */
+.js-plotly-plot, .dash-graph { width: 100%; height: 100%; }
+.card .dash-graph { min-height: 340px; }
+
+/* Inputs */
+.Select-control, .Select-multi-value-wrapper, .DateInput_input, input[type="text"] {
+  color: var(--text);
+}
+
+
+/* === SECOM THEME VARIANTS ===
+   Personalize as cores abaixo conforme o guia oficial de marca.
+   Sugestão inicial (ajuste à vontade):
+   - Primária: Azul institucional (#0B61E1)
+   - Primária escura: #093E8E
+   - Acento: Amarelo (#F2B705)
+*/
+.secom-light {
+  --bg: #F6F8FC;
+  --card: #FFFFFF;
+  --text: #0A1224;
+  --muted: #5B6B85;
+  --primary: #0B61E1;
+  --primary-strong: #093E8E;
+  --accent: #F2B705;
+}
+
+.secom-dark {
+  --bg: #0B1220;
+  --card: #0F1A2E;
+  --text: #E7EDF8;
+  --muted: #98A8C4;
+  --primary: #3A86FF;        /* opção mais luminosa no dark */
+  --primary-strong: #2563EB; /* realce/hover */
+  --accent: #F2B705;
+}
+
+/* Utiliza variáveis de tema para botões/links */
+.actions .btn { background: var(--primary, #1b2943); border-color: color-mix(in srgb, var(--primary, #1b2943) 70%, black); }
+.actions .btn:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.actions .btn.ghost { background: transparent; color: var(--text); border-color: color-mix(in srgb, var(--primary, #2C3B57) 40%, white 10%); }
+.dash-table-container a { color: var(--primary, #2563EB); }
+.badge { background: var(--primary, #2563EB); }
