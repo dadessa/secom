@@ -2,556 +2,556 @@
 import os
 import io
 import re
-from datetime import datetime
-import unicodedata
 import requests
 import pandas as pd
+import numpy as np
+from datetime import datetime
 import plotly.express as px
 import plotly.graph_objects as go
 
-from dash import Dash, dcc, html, dash_table, Input, Output, State, no_update
+from dash import Dash, dcc, html, Input, Output, State, dash_table, ctx
 
-# -----------------------------------------------------------------------------
-# Configuração: URL da planilha (pode vir por ENV no Render)
-# -----------------------------------------------------------------------------
-DEFAULT_SHEET_URL = (
-    "https://docs.google.com/spreadsheets/d/1yox2YBeCCQd6nt-zhMDjG2CjC29ImgrtQpBlPpA5tpc/export?format=xlsx&id=1yox2YBeCCQd6nt-zhMDjG2CjC29ImgrtQpBlPpA5tpc"
+# --------------------------------------------------------------------------------------
+# Configurações
+# --------------------------------------------------------------------------------------
+
+DEFAULT_SHEETS_URL = (
+    os.environ.get("EXCEL_URL")
+    or "https://docs.google.com/spreadsheets/d/1yox2YBeCCQd6nt-zhMDjG2CjC29ImgrtQpBlPpA5tpc/export?format=xlsx&id=1yox2YBeCCQd6nt-zhMDjG2CjC29ImgrtQpBlPpA5tpc"
 )
-EXCEL_URL = os.environ.get("EXCEL_URL", DEFAULT_SHEET_URL).strip()
 
-# -----------------------------------------------------------------------------
-# Utilidades
-# -----------------------------------------------------------------------------
-def _strip_accents(s: str) -> str:
-    if not isinstance(s, str):
-        s = "" if pd.isna(s) else str(s)
-    return ''.join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))
+REQUEST_TIMEOUT = 25  # segundos
 
-def _normalize_col(col: str) -> str:
-    """Normaliza nome de coluna para comparar/match mais fácil."""
-    col = _strip_accents(col).upper().strip()
-    col = re.sub(r"\s+", " ", col)
-    return col
-
-def _normalize_excel_url(url: str) -> str:
-    """
-    Aceita link de edição ou de export e retorna URL no formato export XLSX.
-    Ex.: https://docs.google.com/spreadsheets/d/<ID>/edit#gid=0  -> export?format=xlsx&id=<ID>
-    """
-    url = url.strip()
-    # já está em export? Só garante format=xlsx
-    if "/export" in url:
-        # força format=xlsx
-        url = re.sub(r"format=[a-zA-Z0-9_]+", "format=xlsx", url)
-        # garante que tem id
-        m = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", url)
-        if m and "id=" not in url:
-            url += ("&" if "?" in url else "?") + f"id={m.group(1)}"
-        return url
-
-    # tenta extrair o file_id de uma URL /spreadsheets/d/<ID>/...
-    m = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", url)
-    if m:
-        file_id = m.group(1)
-        return f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx&id={file_id}"
-
-    # Se cair aqui, retorna como veio (pode ser uma URL direta já válida)
-    return url
-
-def _download_excel_bytes(url: str) -> bytes:
-    """Baixa a planilha como XLSX e retorna os bytes. Levanta erro com mensagem clara se falhar."""
-    norm = _normalize_excel_url(url)
-    try:
-        r = requests.get(norm, timeout=45)
-        if r.status_code != 200:
-            raise RuntimeError(f"Falha ao baixar planilha (HTTP {r.status_code}). Verifique o compartilhamento público 'Qualquer pessoa com o link' e o formato de export.")
-        # Google às vezes retorna HTML (login) se permissão não estiver pública
-        content_type = r.headers.get("Content-Type", "")
-        if "text/html" in content_type.lower() and not norm.lower().endswith(".xlsx"):
-            raise RuntimeError("Recebi HTML em vez de XLSX. Ajuste o link para 'Exportar' e habilite 'Qualquer pessoa com o link'.")
-        return r.content
-    except Exception as e:
-        raise RuntimeError(f"Erro ao acessar a planilha: {e}")
-
-# -----------------------------------------------------------------------------
-# Carregamento & padronização de dados
-# -----------------------------------------------------------------------------
-COL_ALIASES = {
-    "CAMPANHA": ["CAMPANHA", "NOME DA CAMPANHA", "CAMPANHAS"],
-    "SECRETARIA": ["SECRETARIA", "ÓRGÃO", "ORGAO", "SED"],
-    "AGÊNCIA": ["AGENCIA", "AGÊNCIA", "AGENCIA/AGENCIA", "AGENCIA / AGENCIA", "AGENCIA / AGÊNCIA"],
-    "VALOR DO ESPELHO": ["VALOR DO ESPELHO", "VALOR", "VALOR TOTAL", "VALOR_ESPELHO"],
-    "PROCESSO": ["PROCESSO", "Nº PROCESSO", "NUMERO DO PROCESSO", "Nº DO PROCESSO"],
-    "EMPENHO": ["EMPENHO", "Nº EMPENHO", "NUMERO DO EMPENHO"],
-    "DATA DO EMPENHO": ["DATA DO EMPENHO", "DT EMPENHO", "DATA EMPENHO"],
-    "COMPETÊNCIA_DT": ["COMPETENCIA_DT", "COMPETÊNCIA_DT", "COMPETENCIA DATA", "COMPETENCIA DATA (DT)"],
-    "COMPETÊNCIA_TXT": ["COMPETENCIA", "COMPETÊNCIA", "COMPETENCIA_TXT", "MES/ANO", "MÊS/ANO"],
-    "OBSERVAÇÃO": ["OBSERVACAO", "OBSERVAÇÃO", "OBS", "JUSTIFICATIVA"],
-    "ESPELHO DIANA": ["ESPELHO DIANA", "DIANA", "LINK DIANA"],
-    "ESPELHO": ["ESPELHO", "LINK ESPELHO", "LINK RELATORIO"],
-    "PDF": ["PDF", "LINK PDF", "RELATORIO PDF"],
-    # Colunas extras úteis
-    "COMPETÊNCIA_MES": [],
+# Map de nomes de colunas esperadas -> aliases possíveis no arquivo
+COLMAP = {
+    "CAMPANHA": ["CAMPANHA", "NOME DA CAMPANHA", "CAMPANHA_NM"],
+    "SECRETARIA": ["SECRETARIA", "ÓRGÃO", "ORGAO"],
+    "AGÊNCIA": ["AGÊNCIA", "AGENCIA", "AGÊNCIA/AGENCIA"],
+    "VALOR DO ESPELHO": ["VALOR DO ESPELHO", "VALOR", "VALOR_ESPELHO"],
+    "PROCESSO": ["PROCESSO", "URL_PROCESSO", "LINK PROCESSO"],
+    "EMPENHO": ["EMPENHO", "URL_EMPENHO", "LINK EMPENHO"],
+    "DATA DO EMPENHO": ["DATA DO EMPENHO", "DT_EMPENHO", "DATA EMPENHO"],
+    "COMPETÊNCIA_DT": ["COMPETÊNCIA_DT", "COMPETENCIA_DT", "DT_COMPETENCIA"],
+    "COMPETÊNCIA_TXT": ["COMPETÊNCIA_TXT", "COMPETENCIA_TXT", "COMPETÊNCIA"],
+    "OBSERVAÇÃO": ["OBSERVAÇÃO", "OBS", "OBSERVACAO"],
+    "ESPELHO DIANA": ["ESPELHO DIANA", "URL_DIANA", "DIANA"],
+    "ESPELHO": ["ESPELHO", "URL_ESPELHO"],
+    "PDF": ["PDF", "URL_PDF"],
 }
 
-TARGET_ORDER = [
-    "CAMPANHA","SECRETARIA","AGÊNCIA","VALOR DO ESPELHO",
-    "PROCESSO","EMPENHO","DATA DO EMPENHO","COMPETÊNCIA",
-    "OBSERVAÇÃO","ESPELHO DIANA","ESPELHO","PDF"
-]
+# --------------------------------------------------------------------------------------
+# Utilitários
+# --------------------------------------------------------------------------------------
 
-def _map_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Renomeia colunas para o alvo padrão considerando aliases."""
-    current = {c: _normalize_col(c) for c in df.columns}
-    rename = {}
+def _fetch_excel_bytes(url: str) -> bytes:
+    """Baixa o XLSX do Google Sheets (ou outra URL)."""
+    try:
+        r = requests.get(url, timeout=REQUEST_TIMEOUT)
+        r.raise_for_status()
+        return r.content
+    except Exception as e:
+        raise RuntimeError(f"Falha ao baixar a planilha: {e}")
 
-    for target, aliases in COL_ALIASES.items():
-        found = None
-        for col, norm in current.items():
-            if norm == target or norm in [_normalize_col(a) for a in aliases]:
-                found = col
-                break
-        if found:
-            rename[found] = target
+def _sheet_names_from_url(url: str) -> list[str]:
+    """Lista os nomes das abas do arquivo remoto."""
+    raw = _fetch_excel_bytes(url)
+    with pd.ExcelFile(io.BytesIO(raw)) as xl:
+        return list(xl.sheet_names)
 
-    df = df.rename(columns=rename)
+def _standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Colunas em maiúsculas e sem espaços extras."""
+    df = df.copy()
+    df.columns = [str(c).strip().upper() for c in df.columns]
+    return df
 
-    # COMPETÊNCIA (escolher melhor entre *_DT e *_TXT)
-    if "COMPETÊNCIA_DT" in df.columns and "COMPETÊNCIA" not in df.columns:
-        df["COMPETÊNCIA"] = df["COMPETÊNCIA_DT"]
-    elif "COMPETÊNCIA_TXT" in df.columns and "COMPETÊNCIA" not in df.columns:
-        df["COMPETÊNCIA"] = df["COMPETÊNCIA_TXT"]
+def _first_present(df: pd.DataFrame, candidates: list[str]) -> str | None:
+    for c in candidates:
+        if c in df.columns:
+            return c
+    return None
 
-    # Garante colunas obrigatórias (se não existir, cria vazia)
-    for col in TARGET_ORDER:
-        if col not in df.columns:
-            df[col] = ""
+def _coerce_numeric(series: pd.Series) -> pd.Series:
+    """Converte para numérico aceitando formatos PT-BR (vírgula decimal)."""
+    s = series.astype(str).str.replace(r"[^\d,.\-]", "", regex=True)
+    # Se tem vírgula e não tem ponto, trocamos vírgula por ponto
+    s = np.where(
+        s.astype(str).str.contains(",") & ~s.astype(str).str.contains(r"\.\d"),
+        s.astype(str).str.replace(",", ".", regex=False),
+        s,
+    )
+    return pd.to_numeric(s, errors="coerce")
+
+def _parse_competencia(df: pd.DataFrame) -> pd.DataFrame:
+    """Gera COMPETENCIA_DT (primeiro dia do mês) e COMPETENCIA_MES (YYYY-MM)."""
+    df = df.copy()
+    cdt = _first_present(df, COLMAP["COMPETÊNCIA_DT"]) or ""
+    ctxt = _first_present(df, COLMAP["COMPETÊNCIA_TXT"]) or ""
+
+    comp = None
+    if cdt and cdt in df.columns:
+        comp = pd.to_datetime(df[cdt], errors="coerce", dayfirst=True)
+    if comp is None or comp.isna().all():
+        if ctxt and ctxt in df.columns:
+            comp = pd.to_datetime(df[ctxt], errors="coerce", dayfirst=True)
+        else:
+            comp = pd.Series([pd.NaT] * len(df))
+
+    # Normaliza pro primeiro dia do mês
+    comp = comp.dt.to_period("M").dt.to_timestamp()
+    df["COMPETENCIA_DT"] = comp
+    df["COMPETENCIA_MES"] = df["COMPETENCIA_DT"].dt.strftime("%Y-%m")
 
     return df
 
-def _parse_currency(val):
-    if pd.isna(val):
-        return 0.0
-    if isinstance(val, (int, float)):
-        return float(val)
-    s = str(val).strip()
-    s = s.replace("R$", "").replace("\u00a0", " ").replace(" ", "")
-    # Converte formato pt-BR: 1.234.567,89 -> 1234567.89
-    s = s.replace(".", "").replace(",", ".")
-    try:
-        return float(s)
-    except:
-        return 0.0
+def _normalize_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Padroniza nomes de colunas, cria colunas auxiliares e garante tipos."""
+    df = _standardize_columns(df)
 
-def _to_month_start(dt: pd.Timestamp) -> pd.Timestamp:
-    return pd.Timestamp(year=dt.year, month=dt.month, day=1)
+    # Renomear colunas padrão se estiverem com outro rótulo
+    rename_map = {}
+    for dst, cands in COLMAP.items():
+        got = _first_present(df, cands)
+        if got and got != dst:
+            rename_map[got] = dst
+    if rename_map:
+        df = df.rename(columns=rename_map)
 
-def _load_data(url: str) -> pd.DataFrame:
-    """Carrega todas as abas da planilha XLSX e concatena; normaliza colunas/valores."""
-    raw = _download_excel_bytes(url)
-    xl = pd.ExcelFile(io.BytesIO(raw))
-    frames = []
-    for sheet in xl.sheet_names:
-        try:
-            df = pd.read_excel(xl, sheet_name=sheet, dtype=object)
-            if df is None or df.empty:
-                continue
-            frames.append(df)
-        except Exception:
-            continue
-    if not frames:
-        raise RuntimeError("A planilha foi baixada, mas não encontrei dados nas abas. Verifique o conteúdo.")
-
-    df = pd.concat(frames, ignore_index=True).copy()
-
-    # Normaliza colunas
-    df = _map_columns(df)
-
-    # Tipagens e campos derivados
-    df["VALOR DO ESPELHO_NUM"] = df["VALOR DO ESPELHO"].map(_parse_currency)
+    # Converte valor
+    if "VALOR DO ESPELHO" in df.columns:
+        df["VALOR DO ESPELHO"] = _coerce_numeric(df["VALOR DO ESPELHO"]).fillna(0.0)
+    else:
+        df["VALOR DO ESPELHO"] = 0.0
 
     # Datas
-    for col in ["DATA DO EMPENHO", "COMPETÊNCIA_DT"]:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce", dayfirst=True)
+    df = _parse_competencia(df)
+    if "DATA DO EMPENHO" in df.columns:
+        df["DATA DO EMPENHO"] = pd.to_datetime(df["DATA DO EMPENHO"], errors="coerce", dayfirst=True)
 
-    # COMPETÊNCIA via TXT se necessário (ex.: mm/aaaa)
-    if "COMPETÊNCIA" in df.columns and not pd.api.types.is_datetime64_any_dtype(df["COMPETÊNCIA"]):
-        comp = df["COMPETÊNCIA"].astype(str).str.strip()
-        # tenta mm/aaaa
-        comp_dt = pd.to_datetime(comp, errors="coerce", format="%m/%Y")
-        # fallback: tenta dd/mm/aaaa
-        comp_dt2 = pd.to_datetime(comp, errors="coerce", dayfirst=True)
-        df["COMPETÊNCIA_DT"] = comp_dt.fillna(comp_dt2)
+    # Garante existência das demais colunas como string
+    for col in ["CAMPANHA","SECRETARIA","AGÊNCIA","PROCESSO","EMPENHO","OBSERVAÇÃO","ESPELHO DIANA","ESPELHO","PDF"]:
+        if col not in df.columns:
+            df[col] = ""
+        df[col] = df[col].astype(str).fillna("")
 
-    # mês de competência (1º dia do mês)
-    if "COMPETÊNCIA_DT" in df.columns:
-        df["COMPETÊNCIA_MES"] = df["COMPETÊNCIA_DT"].dropna().map(_to_month_start)
-    else:
-        df["COMPETÊNCIA_MES"] = pd.NaT
-
-    # Exibição BRL formatada
-    def fmt_brl(x):
+    # Valor BR formatado
+    def fmt_brl(v):
         try:
-            return "R$ {:,.2f}".format(float(x)).replace(",", "X").replace(".", ",").replace("X", ".")
-        except:
-            return "R$ 0,00"
-    df["VALOR_BR"] = df["VALOR DO ESPELHO_NUM"].map(fmt_brl)
-
-    # Links -> markdown
-    def link_md(url, label):
-        if not isinstance(url, str):
-            url = "" if pd.isna(url) else str(url)
-        u = url.strip()
-        if u and (u.startswith("http://") or u.startswith("https://")):
-            return f"[{label}]({u})"
-        return ""
-
-    df["PROCESSO_MD"] = df["PROCESSO"].apply(lambda u: link_md(u, "Processo"))
-    df["EMPENHO_MD"] = df["EMPENHO"].apply(lambda u: link_md(u, "Empenho"))
-    df["ESPELHO_DIANA_MD"] = df["ESPELHO DIANA"].apply(lambda u: link_md(u, "Diana"))
-    df["ESPELHO_MD"] = df["ESPELHO"].apply(lambda u: link_md(u, "Espelho"))
-    df["PDF_MD"] = df["PDF"].apply(lambda u: link_md(u, "PDF"))
-
-    # Cast de filtros para string (evita erro de sort entre int/str)
-    for c in ["SECRETARIA", "AGÊNCIA", "CAMPANHA"]:
-        if c in df.columns:
-            df[c] = df[c].astype(str).fillna("").replace("nan","")
+            return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except Exception:
+            return ""
+    df["VALOR (BRL)"] = df["VALOR DO ESPELHO"].apply(fmt_brl)
 
     return df
 
-# -----------------------------------------------------------------------------
-# Carregar dados iniciais (fallback seguro)
-# -----------------------------------------------------------------------------
-try:
-    DF_BASE = _load_data(EXCEL_URL)
-    LOAD_ERROR = ""
-except Exception as e:
-    DF_BASE = pd.DataFrame(columns=TARGET_ORDER + ["VALOR DO ESPELHO_NUM","COMPETÊNCIA_MES",
-                                                   "VALOR_BR","PROCESSO_MD","EMPENHO_MD","ESPELHO_DIANA_MD","ESPELHO_MD","PDF_MD"])
-    LOAD_ERROR = str(e)
+def _read_sheet(url: str, sheet: str) -> pd.DataFrame:
+    """Carrega uma aba específica como DataFrame normalizado."""
+    raw = _fetch_excel_bytes(url)
+    df = pd.read_excel(io.BytesIO(raw), sheet_name=sheet, dtype=object)
+    return _normalize_df(df)
 
-# -----------------------------------------------------------------------------
+def _safe_sorted_unique(series: pd.Series) -> list[str]:
+    vals = series.fillna("").astype(str).unique().tolist()
+    # Evita erro de comparação int/str ao ordenar
+    try:
+        return sorted([v for v in vals if v])
+    except Exception:
+        return [v for v in vals if v]
+
+# --------------------------------------------------------------------------------------
 # App
-# -----------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------
+
 app = Dash(__name__, suppress_callback_exceptions=True)
 server = app.server
 
-# Tema (claro/escuro) aplicado nos gráficos via layout template
-def _plot_theme(theme_value: str) -> dict:
-    is_dark = (theme_value == "dark")
-    bg = "#0f172a" if is_dark else "#ffffff"
-    paper = "#0b1220" if is_dark else "#ffffff"
-    grid = "#334155" if is_dark else "#e2e8f0"
-    font = "#e2e8f0" if is_dark else "#0f172a"
-    return dict(
-        plot_bgcolor=bg,
-        paper_bgcolor=paper,
-        font=dict(color=font),
-        xaxis=dict(showgrid=True, gridcolor=grid, zeroline=False),
-        yaxis=dict(showgrid=True, gridcolor=grid, zeroline=False),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=40, r=20, t=60, b=40)
+def make_figure_template(theme: str) -> str:
+    return "plotly_dark" if (theme == "dark") else "plotly_white"
+
+def build_layout(sheet_names: list[str]):
+    theme_switch = dcc.RadioItems(
+        id="theme",
+        options=[{"label":"Claro","value":"light"},{"label":"Escuro","value":"dark"}],
+        value="light",
+        inline=True,
+        style={"display":"inline-block","marginLeft":"8px"}
     )
 
-def _options_from(df: pd.DataFrame, col: str):
-    if col not in df.columns:
-        return []
-    vals = df[col].fillna("").astype(str).unique().tolist()
-    vals = [v for v in vals if v]
-    vals.sort(key=lambda x: x.lower())
-    return [{"label": v, "value": v} for v in vals]
+    return html.Div(
+        id="root",
+        style={"backgroundColor":"#0b0c0e", "minHeight":"100vh"},
+        children=[
+            # Barra superior
+            html.Div(
+                style={
+                    "display":"flex","justifyContent":"space-between","alignItems":"center",
+                    "padding":"16px 20px","backgroundColor":"#111318","borderBottom":"1px solid #1f2430"
+                },
+                children=[
+                    html.Div([
+                        html.H2("SECOM • Dashboard de Processos", style={"margin":"0","color":"#e2e8f0"}),
+                        html.Div("Dados dinâmicos via Google Sheets", style={"color":"#9aa4b2","fontSize":"12px"})
+                    ]),
+                    html.Div([
+                        html.Span("Tema:", style={"color":"#9aa4b2","marginRight":"6px"}),
+                        theme_switch,
+                        html.Button("Atualizar dados", id="btn_refresh", n_clicks=0, style={
+                            "marginLeft":"16px","padding":"8px 12px","border":"1px solid #334155",
+                            "background":"#1f2937","color":"#e5e7eb","borderRadius":"10px","cursor":"pointer"
+                        }),
+                    ])
+                ]
+            ),
 
-def _filter_df(df: pd.DataFrame,
-               secretarias, agencias, campanhas,
-               dt_ini, dt_fim) -> pd.DataFrame:
-    out = df.copy()
-    if secretarias:
-        out = out[out["SECRETARIA"].isin(secretarias)]
-    if agencias:
-        out = out[out["AGÊNCIA"].isin(agencias)]
-    if campanhas:
-        out = out[out["CAMPANHA"].isin(campanhas)]
-    # período por COMPETÊNCIA_MES
-    if "COMPETÊNCIA_MES" in out.columns:
-        if dt_ini:
-            out = out[out["COMPETÊNCIA_MES"].fillna(pd.NaT) >= pd.to_datetime(dt_ini)]
-        if dt_fim:
-            out = out[out["COMPETÊNCIA_MES"].fillna(pd.NaT) <= pd.to_datetime(dt_fim)]
-    return out
+            # Filtros
+            html.Div(
+                style={
+                    "padding":"16px 20px","backgroundColor":"#0b0c0e","borderBottom":"1px solid #1f2430"
+                },
+                children=[
+                    html.Div(style={"display":"grid","gridTemplateColumns":"repeat(6, minmax(0,1fr))","gap":"12px"}, children=[
+                        # ABA (sheet)
+                        html.Div(children=[
+                            html.Label("Aba da planilha", style={"color":"#cbd5e1","fontWeight":600}),
+                            dcc.Dropdown(
+                                id="f_sheet",
+                                options=[{"label": s, "value": s} for s in sheet_names],
+                                value=sheet_names[0] if sheet_names else None,
+                                placeholder="Escolha a aba…",
+                                clearable=False
+                            )
+                        ]),
+                        html.Div(children=[
+                            html.Label("Secretaria", style={"color":"#cbd5e1","fontWeight":600}),
+                            dcc.Dropdown(id="f_secretaria", options=[], multi=True, placeholder="Selecione…")
+                        ]),
+                        html.Div(children=[
+                            html.Label("Agência", style={"color":"#cbd5e1","fontWeight":600}),
+                            dcc.Dropdown(id="f_agencia", options=[], multi=True, placeholder="Selecione…")
+                        ]),
+                        html.Div(children=[
+                            html.Label("Campanha", style={"color":"#cbd5e1","fontWeight":600}),
+                            dcc.Dropdown(id="f_campanha", options=[], multi=True, placeholder="Selecione…")
+                        ]),
+                        html.Div(children=[
+                            html.Label("Período (Competência)", style={"color":"#cbd5e1","fontWeight":600}),
+                            dcc.Dropdown(id="f_comp", options=[], multi=True, placeholder="Selecione…")
+                        ]),
+                        html.Div(children=[
+                            html.Label(" ", style={"color":"#cbd5e1","fontWeight":600, "visibility":"hidden"}),
+                            dcc.Input(id="excel_url", type="text", value=DEFAULT_SHEETS_URL, debounce=True,
+                                      placeholder="URL export?format=xlsx…",
+                                      style={"width":"100%","background":"#0f172a","border":"1px solid #1f2430","color":"#e2e8f0","borderRadius":"10px","padding":"8px"}),
+                        ]),
+                    ])
+                ]
+            ),
 
-# Layout
-app.layout = html.Div(
-    [
-        # Tema
-        dcc.Store(id="store_data"),
-        html.Div(
-            [
-                html.H2("Dashboard SECOM", style={"margin":"0"}),
-                html.Div(
-                    [
-                        html.Label("Tema:"),
-                        dcc.RadioItems(
-                            id="theme",
-                            options=[{"label":"Claro","value":"light"},{"label":"Escuro","value":"dark"}],
-                            value="light",
-                            inline=True,
-                        ),
-                        html.Button("Atualizar dados", id="btn_refresh", n_clicks=0, style={"marginLeft":"16px"}),
-                        html.Span(id="status_msg", style={"marginLeft":"12px", "fontStyle":"italic"}),
-                    ],
-                    style={"display":"flex","alignItems":"center","gap":"12px"}
-                ),
-                html.Div(
-                    LOAD_ERROR and f"Aviso: {LOAD_ERROR}" or "",
-                    id="load_warn",
-                    style={"color":"#ef4444","marginTop":"6px"}
-                ),
-            ],
-            style={"display":"flex","flexDirection":"column","gap":"8px","marginBottom":"12px"}
-        ),
+            # KPIs
+            html.Div(style={"padding":"16px 20px","backgroundColor":"#0b0c0e"}, children=[
+                html.Div(style={"display":"grid","gridTemplateColumns":"repeat(4, minmax(0,1fr))","gap":"12px"}, children=[
+                    html.Div(id="kpi_total", style=_card_style()),
+                    html.Div(id="kpi_qtd", style=_card_style()),
+                    html.Div(id="kpi_mediana", style=_card_style()),
+                    html.Div(id="kpi_distintas", style=_card_style()),
+                ])
+            ]),
 
-        # Filtros
-        html.Div(
-            [
-                html.Div([
-                    html.Label("Secretaria"),
-                    dcc.Dropdown(id="f_secretaria", options=_options_from(DF_BASE, "SECRETARIA"), multi=True, placeholder="Todas"),
-                ], style={"flex":1}),
-                html.Div([
-                    html.Label("Agência"),
-                    dcc.Dropdown(id="f_agencia", options=_options_from(DF_BASE, "AGÊNCIA"), multi=True, placeholder="Todas"),
-                ], style={"flex":1}),
-                html.Div([
-                    html.Label("Campanha"),
-                    dcc.Dropdown(id="f_campanha", options=_options_from(DF_BASE, "CAMPANHA"), multi=True, placeholder="Todas"),
-                ], style={"flex":1}),
-                html.Div([
-                    html.Label("Período (Competência)"),
-                    dcc.DatePickerRange(
-                        id="f_periodo",
-                        min_date_allowed= (DF_BASE["COMPETÊNCIA_MES"].min().to_pydatetime() if "COMPETÊNCIA_MES" in DF_BASE and DF_BASE["COMPETÊNCIA_MES"].notna().any() else None),
-                        max_date_allowed= (DF_BASE["COMPETÊNCIA_MES"].max().to_pydatetime() if "COMPETÊNCIA_MES" in DF_BASE and DF_BASE["COMPETÊNCIA_MES"].notna().any() else None),
-                        start_date= (DF_BASE["COMPETÊNCIA_MES"].min().to_pydatetime() if "COMPETÊNCIA_MES" in DF_BASE and DF_BASE["COMPETÊNCIA_MES"].notna().any() else None),
-                        end_date= (DF_BASE["COMPETÊNCIA_MES"].max().to_pydatetime() if "COMPETÊNCIA_MES" in DF_BASE and DF_BASE["COMPETÊNCIA_MES"].notna().any() else None),
-                    ),
-                ], style={"flex":1, "minWidth":"280px"}),
-            ],
-            style={"display":"grid","gridTemplateColumns":"repeat(4, 1fr)","gap":"12px","marginBottom":"16px"}
-        ),
+            # Gráficos
+            html.Div(style={"padding":"0px 20px 20px 20px","backgroundColor":"#0b0c0e"}, children=[
+                html.Div(style={"display":"grid","gridTemplateColumns":"repeat(2, minmax(0,1fr))","gap":"12px"}, children=[
+                    html.Div(_graph_card("Evolução mensal", "g_evolucao")),
+                    html.Div(_graph_card("Top 10 Secretarias", "g_sec")),
+                ]),
+                html.Div(style={"height":"12px"}),
+                html.Div(style={"display":"grid","gridTemplateColumns":"repeat(2, minmax(0,1fr))","gap":"12px"}, children=[
+                    html.Div(_graph_card("Top 10 Agências", "g_age")),
+                    html.Div(_graph_card("Treemap Secretaria → Agência", "g_treemap")),
+                ]),
+                html.Div(style={"height":"12px"}),
+                html.Div(_graph_card("Campanhas por valor", "g_camp")),
+            ]),
 
-        # KPIs
-        html.Div(
-            [
-                html.Div([html.Div("Valor total"), html.H3(id="kpi_total")], className="card"),
-                html.Div([html.Div("Registros"), html.H3(id="kpi_regs")], className="card"),
-                html.Div([html.Div("Secretarias"), html.H3(id="kpi_secs")], className="card"),
-                html.Div([html.Div("Agências"), html.H3(id="kpi_agcs")], className="card"),
-            ],
-            style={"display":"grid","gridTemplateColumns":"repeat(4, 1fr)","gap":"12px","marginBottom":"12px"}
-        ),
+            # Tabela
+            html.Div(style={"padding":"0px 20px 30px 20px","backgroundColor":"#0b0c0e"}, children=[
+                html.Div(style=_card_style(), children=[
+                    html.Div("Tabela detalhada", style={"color":"#e2e8f0","fontWeight":700,"padding":"12px 12px 0 12px"}),
+                    dash_table.DataTable(
+                        id="tbl",
+                        columns=[
+                            {"name": "CAMPANHA", "id": "CAMPANHA"},
+                            {"name": "SECRETARIA", "id": "SECRETARIA"},
+                            {"name": "AGÊNCIA", "id": "AGÊNCIA"},
+                            {"name": "VALOR DO ESPELHO", "id": "VALOR (BRL)"},
+                            {"name": "PROCESSO", "id": "PROCESSO_MD", "presentation": "markdown"},
+                            {"name": "EMPENHO", "id": "EMPENHO_MD", "presentation": "markdown"},
+                            {"name": "DATA DO EMPENHO", "id": "DATA DO EMPENHO"},
+                            {"name": "COMPETÊNCIA", "id": "COMPETENCIA_MES"},
+                            {"name": "OBSERVAÇÃO", "id": "OBSERVAÇÃO"},
+                            {"name": "ESPELHO DIANA", "id": "ESPELHO DIANA_MD", "presentation": "markdown"},
+                            {"name": "ESPELHO", "id": "ESPELHO_MD", "presentation": "markdown"},
+                            {"name": "PDF", "id": "PDF_MD", "presentation": "markdown"},
+                        ],
+                        data=[],
+                        page_size=12,
+                        sort_action="native",
+                        filter_action="native",
+                        export_format="xlsx",
+                        style_table={"overflowX":"auto"},
+                        style_as_list_view=True,
+                        style_header={
+                            "backgroundColor":"#0b0c0e","color":"#93a4b8","fontWeight":"bold","borderBottom":"1px solid #1f2430"
+                        },
+                        style_cell={
+                            "backgroundColor":"#111318","color":"#e2e8f0","border":"0px solid transparent",
+                            "padding":"8px","fontSize":"13px"
+                        },
+                        markdown_options={"link_target":"_blank"},
+                    )
+                ])
+            ])
+        ]
+    )
 
-        # Gráficos
-        html.Div(
-            [
-                dcc.Graph(id="g_evolucao"),
-                dcc.Graph(id="g_secretarias"),
-                dcc.Graph(id="g_agencias"),
-                dcc.Graph(id="g_treemap"),
-                dcc.Graph(id="g_pareto"),
-            ],
-            style={"display":"grid","gridTemplateColumns":"1fr","gap":"12px","marginBottom":"16px"}
-        ),
+def _card_style():
+    return {
+        "background":"#111318",
+        "border":"1px solid #1f2430",
+        "borderRadius":"14px",
+        "boxShadow":"0 3px 12px rgba(3,7,18,0.35)",
+        "padding":"12px"
+    }
 
-        # Tabela detalhada
-        html.Div(
-            [
-                html.H3("Dados detalhados"),
-                dash_table.DataTable(
-                    id="tbl",
-                    columns=[
-                        {"name":"CAMPANHA","id":"CAMPANHA"},
-                        {"name":"SECRETARIA","id":"SECRETARIA"},
-                        {"name":"AGÊNCIA","id":"AGÊNCIA"},
-                        {"name":"VALOR DO ESPELHO","id":"VALOR_BR"},
-                        {"name":"PROCESSO","id":"PROCESSO_MD","presentation":"markdown"},
-                        {"name":"EMPENHO","id":"EMPENHO_MD","presentation":"markdown"},
-                        {"name":"DATA DO EMPENHO","id":"DATA DO EMPENHO"},
-                        {"name":"COMPETÊNCIA","id":"COMPETÊNCIA"},
-                        {"name":"OBSERVAÇÃO","id":"OBSERVAÇÃO"},
-                        {"name":"ESPELHO DIANA","id":"ESPELHO_DIANA_MD","presentation":"markdown"},
-                        {"name":"ESPELHO","id":"ESPELHO_MD","presentation":"markdown"},
-                        {"name":"PDF","id":"PDF_MD","presentation":"markdown"},
-                    ],
-                    data=[],
-                    page_size=12,
-                    sort_action="native",
-                    filter_action="native",
-                    style_table={"overflowX":"auto"},
-                    style_header={"fontWeight":"600"},
-                    style_cell={"fontSize":"14px", "padding":"6px"},
-                    markdown_options={"link_target":"_blank"},
-                ),
-            ]
-        ),
+def _graph_card(title, graph_id):
+    return html.Div(style=_card_style(), children=[
+        html.Div(title, style={"color":"#e2e8f0","fontWeight":700,"padding":"0 0 8px 0"}),
+        dcc.Graph(id=graph_id, config={"displaylogo":False})
+    ])
 
-        html.Div(id="_dummy")  # âncora para callbacks sem output visual adicional
-    ],
-    style={"padding":"16px", "maxWidth":"1400px", "margin":"0 auto", "fontFamily":"system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"}
-)
+# --------------------------------------------------------------------------------------
+# Inicializa layout com nomes de abas
+# --------------------------------------------------------------------------------------
+try:
+    START_SHEETS = _sheet_names_from_url(DEFAULT_SHEETS_URL)
+except Exception:
+    START_SHEETS = []
 
-# -----------------------------------------------------------------------------
+app.layout = build_layout(START_SHEETS)
+
+# --------------------------------------------------------------------------------------
 # Callbacks
-# -----------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------
+
+def _apply_filters(df: pd.DataFrame,
+                   secs: list[str] | None,
+                   ages: list[str] | None,
+                   camps: list[str] | None,
+                   comps: list[str] | None) -> pd.DataFrame:
+    mask = pd.Series(True, index=df.index)
+    if secs:
+        mask &= df["SECRETARIA"].astype(str).isin(secs)
+    if ages:
+        mask &= df["AGÊNCIA"].astype(str).isin(ages)
+    if camps:
+        mask &= df["CAMPANHA"].astype(str).isin(camps)
+    if comps:
+        mask &= df["COMPETENCIA_MES"].astype(str).isin(comps)
+    return df.loc[mask].copy()
+
+def _mk_link_md(url: str, label: str) -> str:
+    u = str(url).strip()
+    if u and re.match(r"^https?://", u, flags=re.I):
+        return f"[{label}]({u})"
+    return ""
+
+def _kpi_card(title: str, value: str) -> html.Div:
+    return html.Div(style=_card_style(), children=[
+        html.Div(title, style={"color":"#9aa4b2","fontSize":"12px","paddingBottom":"4px"}),
+        html.Div(value, style={"color":"#e2e8f0","fontSize":"24px","fontWeight":800})
+    ])
+
 @app.callback(
-    Output("store_data","data"),
-    Output("status_msg","children"),
-    Output("load_warn","children"),
+    Output("f_secretaria","options"),
+    Output("f_agencia","options"),
+    Output("f_campanha","options"),
+    Output("f_comp","options"),
+    Input("f_sheet","value"),
     Input("btn_refresh","n_clicks"),
+    State("excel_url","value"),
     prevent_initial_call=False
 )
-def refresh_data(n_clicks):
-    """Faz o download mais recente da planilha ao abrir e ao clicar no botão."""
+def update_filter_options(sheet, n_clicks, url):
+    if not url:
+        url = DEFAULT_SHEETS_URL
+    if not sheet:
+        # tenta pegar primeira aba
+        try:
+            sheet_names = _sheet_names_from_url(url)
+            sheet = sheet_names[0] if sheet_names else None
+        except Exception:
+            sheet = None
+
+    if not sheet:
+        return [], [], [], []
+
     try:
-        df = _load_data(EXCEL_URL)
-        warn = ""
-        msg = f"Dados atualizados em {datetime.now().strftime('%d/%m/%Y %H:%M')}."
-        return df.to_json(date_format="iso", orient="split"), msg, warn
-    except Exception as e:
-        warn = f"Não foi possível atualizar os dados: {e}"
-        # devolve DF_BASE inicial para não quebrar
-        return DF_BASE.to_json(date_format="iso", orient="split"), "", warn
+        df = _read_sheet(url, sheet)
+    except Exception:
+        return [], [], [], []
+
+    opt_se = [{"label": v, "value": v} for v in _safe_sorted_unique(df["SECRETARIA"])]
+    opt_ag = [{"label": v, "value": v} for v in _safe_sorted_unique(df["AGÊNCIA"])]
+    opt_ca = [{"label": v, "value": v} for v in _safe_sorted_unique(df["CAMPANHA"])]
+    opt_co = [{"label": v, "value": v} for v in _safe_sorted_unique(df["COMPETENCIA_MES"])]
+    return opt_se, opt_ag, opt_ca, opt_co
 
 @app.callback(
     Output("kpi_total","children"),
-    Output("kpi_regs","children"),
-    Output("kpi_secs","children"),
-    Output("kpi_agcs","children"),
+    Output("kpi_qtd","children"),
+    Output("kpi_mediana","children"),
+    Output("kpi_distintas","children"),
     Output("g_evolucao","figure"),
-    Output("g_secretarias","figure"),
-    Output("g_agencias","figure"),
+    Output("g_sec","figure"),
+    Output("g_age","figure"),
     Output("g_treemap","figure"),
-    Output("g_pareto","figure"),
+    Output("g_camp","figure"),
     Output("tbl","data"),
-    Input("store_data","data"),
+    Input("f_sheet","value"),
     Input("f_secretaria","value"),
     Input("f_agencia","value"),
     Input("f_campanha","value"),
-    Input("f_periodo","start_date"),
-    Input("f_periodo","end_date"),
+    Input("f_comp","value"),
     Input("theme","value"),
+    Input("btn_refresh","n_clicks"),
+    State("excel_url","value"),
 )
-def update_views(store_json, sec_v, agc_v, camp_v, d_ini, d_fim, theme):
-    theme_layout = _plot_theme(theme)
+def update_content(sheet, v_se, v_ag, v_ca, v_co, theme, n_clicks, url):
+    if not url:
+        url = DEFAULT_SHEETS_URL
 
-    if store_json:
-        df = pd.read_json(store_json, orient="split")
-    else:
-        df = DF_BASE.copy()
+    # Carrega a aba selecionada
+    try:
+        df = _read_sheet(url, sheet) if sheet else pd.DataFrame()
+    except Exception as e:
+        empty_fig = go.Figure()
+        msg = html.Div([
+            html.Div("Falha ao carregar dados", style={"color":"#e11d48","fontWeight":700}),
+            html.Div(str(e), style={"color":"#94a3b8","fontSize":"12px"})
+        ])
+        return msg, msg, msg, msg, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, []
 
-    # Filtra
-    df_f = _filter_df(df, sec_v, agc_v, camp_v, d_ini, d_fim)
+    # Aplica filtros
+    df_f = _apply_filters(
+        df,
+        secs=v_se if isinstance(v_se, list) else (v_se and [v_se]) or None,
+        ages=v_ag if isinstance(v_ag, list) else (v_ag and [v_ag]) or None,
+        camps=v_ca if isinstance(v_ca, list) else (v_ca and [v_ca]) or None,
+        comps=v_co if isinstance(v_co, list) else (v_co and [v_co]) or None,
+    )
 
     # KPIs
-    total_val = float(df_f["VALOR DO ESPELHO_NUM"].sum()) if "VALOR DO ESPELHO_NUM" in df_f else 0.0
-    def fmt_brl(x):
-        return "R$ {:,.2f}".format(float(x)).replace(",", "X").replace(".", ",").replace("X", ".")
-    k_total = fmt_brl(total_val)
-    k_regs = f"{len(df_f):,}".replace(",", ".")
-    k_secs = f"{df_f['SECRETARIA'].nunique() if 'SECRETARIA' in df_f.columns else 0:,}".replace(",", ".")
-    k_agcs = f"{df_f['AGÊNCIA'].nunique() if 'AGÊNCIA' in df_f.columns else 0:,}".replace(",", ".")
+    total = df_f["VALOR DO ESPELHO"].sum() if not df_f.empty else 0.0
+    qtd = len(df_f)
+    med = float(df_f["VALOR DO ESPELHO"].median()) if not df_f.empty else 0.0
+    dist = df_f["PROCESSO"].nunique() if "PROCESSO" in df_f.columns else qtd
 
-    # Gráfico 1: Evolução mensal
-    if "COMPETÊNCIA_MES" in df_f.columns and df_f["COMPETÊNCIA_MES"].notna().any():
-        evol = (df_f.dropna(subset=["COMPETÊNCIA_MES"])
-                    .groupby("COMPETÊNCIA_MES", as_index=False)["VALOR DO ESPELHO_NUM"].sum()
-                    .sort_values("COMPETÊNCIA_MES"))
-        fig_evo = px.area(evol, x="COMPETÊNCIA_MES", y="VALOR DO ESPELHO_NUM", title="Evolução mensal do valor")
-        fig_evo.update_layout(**theme_layout, yaxis_title="Valor (R$)", xaxis_title="Competência")
+    def brl(v):
+        return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    k1 = _kpi_card("Total (Valor do Espelho)", brl(total))
+    k2 = _kpi_card("Qtd. de linhas", f"{qtd:,}".replace(",", "."))
+    k3 = _kpi_card("Mediana por linha", brl(med))
+    k4 = _kpi_card("Processos distintos", f"{dist:,}".replace(",", "."))
+
+    template = make_figure_template(theme)
+
+    # 1) Evolução mensal
+    if not df_f.empty:
+        evo = df_f.groupby("COMPETENCIA_DT", as_index=False)["VALOR DO ESPELHO"].sum().sort_values("COMPETENCIA_DT")
+        fig_evo = px.area(evo, x="COMPETENCIA_DT", y="VALOR DO ESPELHO", template=template)
+        fig_evo.update_layout(margin=dict(l=12,r=12,t=10,b=12), yaxis_title=None, xaxis_title=None)
     else:
-        fig_evo = go.Figure().update_layout(title="Evolução mensal do valor (sem dados)", **theme_layout)
+        fig_evo = go.Figure()
 
-    # Gráfico 2: Top 10 Secretarias
-    if "SECRETARIA" in df_f.columns:
-        sec = (df_f.groupby("SECRETARIA", as_index=False)["VALOR DO ESPELHO_NUM"].sum()
-                    .sort_values("VALOR DO ESPELHO_NUM", ascending=False).head(10))
-        fig_sec = px.bar(sec, x="VALOR DO ESPELHO_NUM", y="SECRETARIA", orientation="h", title="Top 10 Secretarias por valor")
-        fig_sec.update_layout(**theme_layout, xaxis_title="Valor (R$)", yaxis_title="")
+    # 2) Top 10 Secretarias
+    if not df_f.empty:
+        top_se = (
+            df_f.groupby("SECRETARIA", as_index=False)["VALOR DO ESPELHO"].sum()
+            .sort_values("VALOR DO ESPELHO", ascending=False).head(10)
+        )
+        fig_se = px.bar(top_se, x="VALOR DO ESPELHO", y="SECRETARIA", orientation="h", template=template)
+        fig_se.update_layout(margin=dict(l=12,r=12,t=10,b=12), xaxis_title=None, yaxis_title=None)
     else:
-        fig_sec = go.Figure().update_layout(title="Top 10 Secretarias (sem dados)", **theme_layout)
+        fig_se = go.Figure()
 
-    # Gráfico 3: Top 10 Agências
-    if "AGÊNCIA" in df_f.columns:
-        agc = (df_f.groupby("AGÊNCIA", as_index=False)["VALOR DO ESPELHO_NUM"].sum()
-                    .sort_values("VALOR DO ESPELHO_NUM", ascending=False).head(10))
-        fig_agc = px.bar(agc, x="VALOR DO ESPELHO_NUM", y="AGÊNCIA", orientation="h", title="Top 10 Agências por valor")
-        fig_agc.update_layout(**theme_layout, xaxis_title="Valor (R$)", yaxis_title="")
+    # 3) Top 10 Agências
+    if not df_f.empty:
+        top_ag = (
+            df_f.groupby("AGÊNCIA", as_index=False)["VALOR DO ESPELHO"].sum()
+            .sort_values("VALOR DO ESPELHO", ascending=False).head(10)
+        )
+        fig_ag = px.bar(top_ag, x="VALOR DO ESPELHO", y="AGÊNCIA", orientation="h", template=template)
+        fig_ag.update_layout(margin=dict(l=12,r=12,t=10,b=12), xaxis_title=None, yaxis_title=None)
     else:
-        fig_agc = go.Figure().update_layout(title="Top 10 Agências (sem dados)", **theme_layout)
+        fig_ag = go.Figure()
 
-    # Gráfico 4: Treemap Secretaria -> Agência
-    if "SECRETARIA" in df_f.columns and "AGÊNCIA" in df_f.columns:
-        tree = df_f.groupby(["SECRETARIA","AGÊNCIA"], as_index=False)["VALOR DO ESPELHO_NUM"].sum()
-        fig_tree = px.treemap(tree, path=["SECRETARIA","AGÊNCIA"], values="VALOR DO ESPELHO_NUM", title="Proporção por Secretaria → Agência")
-        fig_tree.update_layout(**theme_layout, margin=dict(l=0,r=0,t=60,b=0))
+    # 4) Treemap
+    if not df_f.empty:
+        tre = (
+            df_f.groupby(["SECRETARIA","AGÊNCIA"], as_index=False)["VALOR DO ESPELHO"].sum()
+        )
+        fig_tre = px.treemap(tre, path=["SECRETARIA","AGÊNCIA"], values="VALOR DO ESPELHO", template=template)
+        fig_tre.update_layout(margin=dict(l=12,r=12,t=10,b=12))
     else:
-        fig_tree = go.Figure().update_layout(title="Treemap (sem dados)", **theme_layout)
+        fig_tre = go.Figure()
 
-    # Gráfico 5: Campanhas por valor (pareto / barras ordenadas)
-    if "CAMPANHA" in df_f.columns:
-        camp = (df_f.groupby("CAMPANHA", as_index=False)["VALOR DO ESPELHO_NUM"].sum()
-                    .sort_values("VALOR DO ESPELHO_NUM", ascending=False).head(20))
-        fig_par = px.bar(camp, x="CAMPANHA", y="VALOR DO ESPELHO_NUM", title="Campanhas por valor (Top 20)")
-        fig_par.update_layout(**theme_layout, yaxis_title="Valor (R$)", xaxis_title="", xaxis={'tickangle': -30})
+    # 5) Campanhas por valor (Top 20)
+    if not df_f.empty:
+        camp = (
+            df_f.groupby("CAMPANHA", as_index=False)["VALOR DO ESPELHO"].sum()
+            .sort_values("VALOR DO ESPELHO", ascending=False).head(20)
+        )
+        fig_ca = px.bar(camp, x="VALOR DO ESPELHO", y="CAMPANHA", orientation="h", template=template)
+        fig_ca.update_layout(margin=dict(l=12,r=12,t=10,b=12), xaxis_title=None, yaxis_title=None)
     else:
-        fig_par = go.Figure().update_layout(title="Campanhas por valor (sem dados)", **theme_layout)
+        fig_ca = go.Figure()
 
-    # Tabela detalhada
-    tbl_cols = ["CAMPANHA","SECRETARIA","AGÊNCIA","VALOR_BR","PROCESSO_MD","EMPENHO_MD","DATA DO EMPENHO","COMPETÊNCIA","OBSERVAÇÃO","ESPELHO_DIANA_MD","ESPELHO_MD","PDF_MD"]
-    view = df_f.copy()
-    # formata datas para exibição
-    for c in ["DATA DO EMPENHO","COMPETÊNCIA"]:
-        if c in view.columns:
-            view[c] = pd.to_datetime(view[c], errors="coerce", dayfirst=True).dt.strftime("%d/%m/%Y")
-    data_tbl = view[tbl_cols].fillna("").to_dict("records")
+    # Tabela
+    if not df_f.empty:
+        df_tbl = df_f.copy()
+        # colunas markdown de links
+        df_tbl["PROCESSO_MD"] = df_tbl["PROCESSO"].apply(lambda u: _mk_link_md(u, "Processo"))
+        df_tbl["EMPENHO_MD"] = df_tbl["EMPENHO"].apply(lambda u: _mk_link_md(u, "Empenho"))
+        df_tbl["ESPELHO DIANA_MD"] = df_tbl["ESPELHO DIANA"].apply(lambda u: _mk_link_md(u, "Diana"))
+        df_tbl["ESPELHO_MD"] = df_tbl["ESPELHO"].apply(lambda u: _mk_link_md(u, "Espelho"))
+        df_tbl["PDF_MD"] = df_tbl["PDF"].apply(lambda u: _mk_link_md(u, "PDF"))
 
-    return k_total, k_regs, k_secs, k_agcs, fig_evo, fig_sec, fig_agc, fig_tree, fig_par, data_tbl
+        # Seleção final de colunas exibidas
+        cols = ["CAMPANHA","SECRETARIA","AGÊNCIA","VALOR (BRL)","PROCESSO_MD","EMPENHO_MD","DATA DO EMPENHO",
+                "COMPETENCIA_MES","OBSERVAÇÃO","ESPELHO DIANA_MD","ESPELHO_MD","PDF_MD"]
+        cols = [c for c in cols if c in df_tbl.columns]
+        data_tbl = df_tbl[cols].fillna("").to_dict("records")
+    else:
+        data_tbl = []
 
-# -----------------------------------------------------------------------------
-# Estilos básicos
-# -----------------------------------------------------------------------------
-app.index_string = """
-<!DOCTYPE html>
-<html>
-    <head>
-        {%metas%}
-        <title>Dashboard SECOM</title>
-        {%css%}
-        <style>
-            body { background: #ffffff; color: #0f172a; }
-            .card {
-                background: #ffffff;
-                border: 1px solid #e2e8f0;
-                border-radius: 12px;
-                padding: 12px;
-                box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-            }
-            .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td, 
-            .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th {
-                border-color: #e2e8f0;
-            }
-            label { font-weight: 600; }
-        </style>
-    </head>
-    <body>
-        {%app_entry%}
-        <footer>
-            {%config%}
-            {%scripts%}
-        </footer>
-    </body>
-</html>
-"""
+    return k1, k2, k3, k4, fig_evo, fig_se, fig_ag, fig_tre, fig_ca, data_tbl
+
+
+# Atualiza opções da Dropdown de abas quando clicar em "Atualizar" ou quando a URL muda
+@app.callback(
+    Output("f_sheet","options"),
+    Input("btn_refresh","n_clicks"),
+    Input("excel_url","value"),
+    prevent_initial_call=False
+)
+def refresh_sheet_list(n_clicks, url):
+    url = url or DEFAULT_SHEETS_URL
+    try:
+        names = _sheet_names_from_url(url)
+        return [{"label": s, "value": s} for s in names]
+    except Exception:
+        # mantém opções atuais caso dê erro
+        raise dash.exceptions.PreventUpdate
+
 
 if __name__ == "__main__":
-    app.run_server(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", "8050")))
+    app.run_server(host="0.0.0.0", port=int(os.getenv("PORT", "8000")), debug=False)
