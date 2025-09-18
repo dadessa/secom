@@ -6,7 +6,5 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn dashboard_secom:server --workers 2 --threads 8 --timeout 120
     envVars:
-      - key: EXCEL_PATH
-        value: ./data/CONTROLE DE PROCESSOS SECOM.xlsx
-      - key: SHEET_NAME
-        value: CONTROLE DE PROCESSOS - GERAL
+      - key: EXCEL_URL
+        value: https://docs.google.com/spreadsheets/d/1yox2YBeCCQd6nt-zhMDjG2CjC29ImgrtQpBlPpA5tpc/export?format=xlsx&id=1yox2YBeCCQd6nt-zhMDjG2CjC29ImgrtQpBlPpA5tpc
