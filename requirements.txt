@@ -1,6 +1,8 @@
-dash
-plotly
-pandas
-openpyxl
-reportlab
-gunicorn
+
+dash==3.2.0
+pandas==2.3.2
+plotly==6.3.0
+openpyxl==3.1.5
+requests>=2.31.0
+gunicorn==23.0.0
+numpy==2.3.3
