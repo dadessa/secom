@@ -1,17 +1,305 @@
-:root { --bg:#0f1220; --card:#151a2c; --text:#f5f7fb; --muted:#aab1c5; }
-.theme-light { --bg:#f6f7fb; --card:#ffffff; --text:#14161a; --muted:#616b7a; }
+/* ==========================================================================
+   SECOM • Dashboard de Processos — CSS
+   Tema: Claro (padrão) | Escuro (com .theme-dark)
+   O Dash carrega automaticamente tudo que estiver em /assets
+   ========================================================================== */
 
-body { background: var(--bg); color: var(--text); font-family: Inter,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue','Noto Sans',Arial,'Apple Color Emoji','Segoe UI Emoji','Segoe UI Symbol'; }
-#root { padding: 16px 18px 28px; }
+/* --------------------------
+   FONTES E RESET BÁSICO
+--------------------------- */
+:root {
+  /* Tema claro (padrão) */
+  --bg: #f6f7fb;
+  --card: #ffffff;
+  --card-muted: #f1f3f7;
+  --text: #14161a;
+  --muted: #616b7a;
 
-.header { display:flex; align-items:center; justify-content:space-between; gap:16px; }
-.toolbar { display:flex; align-items:center; gap:10px; }
+  --brand: #2436ff;
+  --brand-2: #3a6cff;
+  --accent: #7b86ff;
 
-.filters label { font-size:12px; color:var(--muted); margin-bottom:4px; display:block; }
-.card { background: var(--card); border-radius:12px; padding:12px 14px; box-shadow: 0 1px 0 rgba(0,0,0,.04); }
-.kpi-title { font-size:12px; color:var(--muted); }
-h2,h3,h4 { margin: 6px 0; }
-.btn { padding:8px 12px; border:none; border-radius:8px; background:#3b82f6; color:#fff; cursor:pointer; }
-.btn:hover { filter:brightness(1.05); }
+  --ok: #1bb978;
+  --warn: #ffb020;
+  --bad: #ef5350;
 
-.dash-table-container .dash-spreadsheet-container table { color: var(--text); }
+  --border: #e5e8f0;
+  --shadow: 0 8px 28px rgba(18, 23, 38, 0.08);
+
+  --radius: 14px;
+  --radius-sm: 10px;
+
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+           Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji",
+           "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+/* Tema escuro: aplique .theme-dark no <body> ou no contêiner raiz do layout */
+.theme-dark {
+  --bg: #0f1220;
+  --card: #151a2c;
+  --card-muted: #1b2038;
+  --text: #f5f7fb;
+  --muted: #aab1c5;
+
+  --brand: #7b86ff;
+  --brand-2: #9aa3ff;
+  --accent: #b3b9ff;
+
+  --ok: #2bd58d;
+  --warn: #ffc555;
+  --bad: #ff6b6b;
+
+  --border: #273052;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5 {
+  color: var(--text);
+  margin: 0 0 8px;
+  letter-spacing: .1px;
+}
+p { color: var(--muted); margin: 0 0 6px; }
+
+a { color: var(--brand); text-decoration: none; }
+a:hover { color: var(--brand-2); text-decoration: underline; }
+
+/* --------------------------
+   LAYOUT BÁSICO
+--------------------------- */
+.container,
+.app,
+#app,
+#root {
+  /* use o seletor que existir no seu layout */
+  padding: 18px;
+}
+
+.section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.section + .section { margin-top: 16px; }
+
+/* Grid utilitário (opcional, para cards) */
+.grid {
+  display: grid;
+  gap: 14px;
+}
+.grid.cols-2 { grid-template-columns: 1fr 1fr; }
+.grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+
+@media (max-width: 1200px) { .grid.cols-4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 860px)  { .grid.cols-3, .grid.cols-2, .grid.cols-4 { grid-template-columns: 1fr; } }
+
+/* --------------------------
+   CARDS DE KPI
+--------------------------- */
+.kpi {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  min-height: 84px;
+}
+.kpi .icon {
+  width: 42px; height: 42px;
+  border-radius: 12px;
+  display: grid; place-items: center;
+  background: var(--card-muted);
+  color: var(--brand);
+  flex: 0 0 42px;
+}
+.kpi .label { color: var(--muted); font-size: 12px; }
+.kpi .value { color: var(--text); font-size: 22px; font-weight: 700; }
+
+/* --------------------------
+   CONTROLES (Dropdown, Inputs, DatePicker, Radio)
+--------------------------- */
+
+/* dcc.Dropdown (react-select v1) */
+.Select-control {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: none !important;
+  color: var(--text);
+}
+.Select-control .Select-placeholder,
+.Select-control .Select--single > .Select-control .Select-value .Select-value-label {
+  color: var(--muted);
+}
+.Select-menu-outer {
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+.Select-option {
+  background: transparent;
+  color: var(--text);
+}
+.Select-option.is-focused { background: var(--card-muted); }
+.Select-option.is-selected { background: var(--brand); color: #fff; }
+
+/* dcc.Input / dcc.Textarea */
+input[type="text"],
+input[type="search"],
+input[type="number"],
+textarea {
+  width: 100%;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  outline: none;
+}
+input:focus, textarea:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 20%, transparent);
+}
+
+/* dcc.DatePickerRange / SingleDatePicker */
+.DateRangePicker, .SingleDatePicker {
+  background: transparent;
+}
+.DateInput, .DateRangePickerInput {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.DateInput_input {
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font);
+}
+.CalendarDay__default {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+}
+.CalendarDay__selected,
+.CalendarDay__selected_span {
+  background: var(--brand) !important;
+  color: #fff !important;
+}
+.DayPickerNavigation_button__default {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+}
+
+/* Radio / Toggle de tema */
+input[type="radio"] { accent-color: var(--brand); }
+.radio-group, .theme-switch {
+  display: flex; align-items: center; gap: 10px;
+}
+
+/* Botões */
+button, .btn, ._dash-btn {
+  appearance: none;
+  border: 1px solid var(--brand);
+  background: var(--brand);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .06s ease, background .2s ease, border-color .2s ease;
+}
+button:hover, .btn:hover, ._dash-btn:hover {
+  background: var(--brand-2);
+  border-color: var(--brand-2);
+}
+button:active, .btn:active, ._dash-btn:active { transform: translateY(1px); }
+button.secondary, .btn.secondary {
+  background: transparent;
+  color: var(--brand);
+  border-color: var(--brand);
+}
+button.ghost { background: transparent; border-color: var(--border); color: var(--text); }
+
+/* --------------------------
+   GRÁFICOS (dcc.Graph / plotly)
+--------------------------- */
+.js-plotly-plot,
+.dash-graph {
+  background: var(--card) !important;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 6px;
+}
+
+/* Remove “zoom box” azul do plotly no tema escuro */
+.theme-dark .modebar-btn:hover { background: rgba(255,255,255,0.06) !important; }
+
+/* --------------------------
+   TABELA (dash DataTable)
+--------------------------- */
+.dash-table-container {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.dash-table-container .dash-spreadsheet-container {
+  background: var(--card);
+}
+
+.dash-table-container table {
+  width: 100%;
+  border-collapse: separate !important;
+  border-spacing: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+/* Header */
+.dash-table-container th, .dash-table-container thead tr {
+  background: var(--card-muted) !important;
+  color: var(--text);
+  border-bottom: 1px solid var(--border) !important;
+  font-weight: 700;
+}
+
+/* Células */
+.dash-table-container td {
+  border-bottom: 1px solid var(--border) !important;
+  color: var(--text);
+}
+
+/* Hover */
+.dash-table-container tbody tr:hover td {
+  background: color-mix(in srgb, var(--card-muted) 60%, transparent);
+}
+
+/* L*
