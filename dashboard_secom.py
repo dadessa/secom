@@ -1,622 +1,537 @@
-import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.jsx'
-import { Button } from '@/components/ui/button.jsx'
-import { Badge } from '@/components/ui/badge.jsx'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.jsx'
-import { Input } from '@/components/ui/input.jsx'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select.jsx'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Area, AreaChart } from 'recharts'
-import { TrendingUp, TrendingDown, DollarSign, PieChart as PieChartIcon, BarChart3, LineChart as LineChartIcon, Download, Filter, Search, Calendar, RefreshCw, Eye, EyeOff, Settings } from 'lucide-react'
-import './App.css'
-import data from './assets/data.json'
+import { useState, useMemo, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { TrendingUp, TrendingDown, DollarSign, FileText, AlertCircle, CheckCircle } from 'lucide-react';
+import { MonthlySheet, DashboardFilter } from '@/types';
 
-const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#84CC16', '#F97316']
-
-function App() {
-  const [selectedPeriod, setSelectedPeriod] = useState('todos')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState('todas')
-  const [animationClass, setAnimationClass] = useState('')
-  const [isDarkMode, setIsDarkMode] = useState(false)
-  const [showDetails, setShowDetails] = useState(true)
-
-  useEffect(() => {
-    setAnimationClass('animate-fade-in')
-    // Detectar preferência de tema do sistema
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      setIsDarkMode(true)
-      document.documentElement.classList.add('dark')
-    }
-  }, [])
-
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode)
-    document.documentElement.classList.toggle('dark')
-  }
-
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(value)
-  }
-
-  const formatNumber = (value) => {
-    return new Intl.NumberFormat('pt-BR').format(value)
-  }
-
-  const exportToPDF = () => {
-    window.print()
-  }
-
-  // Dados para os gráficos
-  const chartData = data.evolucao_mensal.map(item => ({
-    mes: item.mes.replace('JANEIROFEVEREIRO', 'JAN/FEV').substring(0, 8),
-    empenhado: item.empenhado,
-    saldo: item.saldo,
-    total: item.empenhado + item.saldo,
-    execucao: ((item.empenhado / (item.empenhado + item.saldo)) * 100).toFixed(1)
-  }))
-
-  const pieData = data.categorias_top.map((item, index) => ({
-    name: item.categoria,
-    value: item.valor,
-    color: COLORS[index % COLORS.length],
-    percentage: ((item.valor / data.resumo.total_empenhado) * 100).toFixed(1)
-  }))
-
-  // Filtrar dados baseado na busca
-  const filteredCategories = data.categorias_top.filter(item =>
-    item.categoria.toLowerCase().includes(searchTerm.toLowerCase())
-  )
-
-  return (
-    <div className={`min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 transition-all duration-500 ${animationClass}`}>
-      {/* Header Melhorado */}
-      <header className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-lg shadow-lg border-b border-slate-200/50 dark:border-slate-700/50 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                <BarChart3 className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  Dashboard Financeiro 2025
-                </h1>
-                <p className="text-slate-600 dark:text-slate-300 mt-1 flex items-center">
-                  <Calendar className="w-4 h-4 mr-2" />
-                  Análise de Orçamento e Execução Financeira
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={toggleDarkMode}
-                className="hover:scale-105 transition-transform"
-              >
-                {isDarkMode ? <Eye className="w-4 h-4 mr-2" /> : <EyeOff className="w-4 h-4 mr-2" />}
-                {isDarkMode ? 'Claro' : 'Escuro'}
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm"
-                className="hover:scale-105 transition-transform"
-              >
-                <Filter className="w-4 h-4 mr-2" />
-                Filtros
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={exportToPDF}
-                className="hover:scale-105 transition-transform"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Exportar PDF
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm"
-                className="hover:scale-105 transition-transform"
-              >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Atualizar
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Filtros Avançados */}
-        <div className="mb-8 p-6 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm rounded-2xl border border-slate-200/50 dark:border-slate-700/50 shadow-lg">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-              <Input
-                placeholder="Buscar categoria..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 bg-white/80 dark:bg-slate-700/80"
-              />
-            </div>
-            <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-              <SelectTrigger className="bg-white/80 dark:bg-slate-700/80">
-                <SelectValue placeholder="Período" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos os Meses</SelectItem>
-                <SelectItem value="q1">1º Trimestre</SelectItem>
-                <SelectItem value="q2">2º Trimestre</SelectItem>
-                <SelectItem value="q3">3º Trimestre</SelectItem>
-                <SelectItem value="q4">4º Trimestre</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="bg-white/80 dark:bg-slate-700/80">
-                <SelectValue placeholder="Categoria" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todas">Todas as Categorias</SelectItem>
-                {data.categorias_top.map((cat, index) => (
-                  <SelectItem key={index} value={cat.categoria}>{cat.categoria}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button 
-              variant="outline" 
-              onClick={() => setShowDetails(!showDetails)}
-              className="bg-white/80 dark:bg-slate-700/80"
-            >
-              <Settings className="w-4 h-4 mr-2" />
-              {showDetails ? 'Ocultar' : 'Mostrar'} Detalhes
-            </Button>
-          </div>
-        </div>
-
-        {/* Cards de Resumo Melhorados */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card className="hover:shadow-2xl transition-all duration-300 hover:scale-105 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">Total Empenhado</CardTitle>
-              <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
-                <DollarSign className="h-4 w-4 text-white" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                {formatCurrency(data.resumo.total_empenhado)}
-              </div>
-              <p className="text-xs text-green-600/70 dark:text-green-400/70 flex items-center mt-2">
-                <TrendingUp className="inline w-3 h-3 mr-1" />
-                +12.5% em relação ao mês anterior
-              </p>
-              <div className="w-full bg-green-200 dark:bg-green-800 rounded-full h-2 mt-3">
-                <div className="bg-green-500 h-2 rounded-full transition-all duration-1000 ease-out" style={{ width: '85%' }}></div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:shadow-2xl transition-all duration-300 hover:scale-105 bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20 border-blue-200 dark:border-blue-800">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-300">Saldo Disponível</CardTitle>
-              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-                <DollarSign className="h-4 w-4 text-white" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                {formatCurrency(data.resumo.total_saldo)}
-              </div>
-              <p className="text-xs text-blue-600/70 dark:text-blue-400/70 flex items-center mt-2">
-                <TrendingDown className="inline w-3 h-3 mr-1" />
-                -5.2% em relação ao mês anterior
-              </p>
-              <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2 mt-3">
-                <div className="bg-blue-500 h-2 rounded-full transition-all duration-1000 ease-out" style={{ width: '65%' }}></div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:shadow-2xl transition-all duration-300 hover:scale-105 bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20 border-purple-200 dark:border-purple-800">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-purple-700 dark:text-purple-300">Taxa de Execução</CardTitle>
-              <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center">
-                <BarChart3 className="h-4 w-4 text-white" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                {data.resumo.taxa_execucao}%
-              </div>
-              <p className="text-xs text-purple-600/70 dark:text-purple-400/70 mt-2">
-                Meta: 90% até dezembro
-              </p>
-              <div className="w-full bg-purple-200 dark:bg-purple-800 rounded-full h-2 mt-3">
-                <div 
-                  className="bg-purple-500 h-2 rounded-full transition-all duration-1000 ease-out"
-                  style={{ width: `${data.resumo.taxa_execucao}%` }}
-                ></div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:shadow-2xl transition-all duration-300 hover:scale-105 bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 border-orange-200 dark:border-orange-800">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-300">Categorias Ativas</CardTitle>
-              <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
-                <PieChartIcon className="h-4 w-4 text-white" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                {data.categorias_top.length}
-              </div>
-              <p className="text-xs text-orange-600/70 dark:text-orange-400/70 mt-2">
-                Principais categorias de gastos
-              </p>
-              <div className="flex space-x-1 mt-3">
-                {[...Array(5)].map((_, i) => (
-                  <div key={i} className="w-2 h-6 bg-orange-300 dark:bg-orange-700 rounded-full animate-pulse" style={{ animationDelay: `${i * 0.1}s` }}></div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Gráficos Principais Melhorados */}
-        <Tabs defaultValue="evolucao" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm p-1 rounded-xl border border-slate-200/50 dark:border-slate-700/50">
-            <TabsTrigger value="evolucao" className="flex items-center data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 rounded-lg transition-all">
-              <LineChartIcon className="w-4 h-4 mr-2" />
-              Evolução
-            </TabsTrigger>
-            <TabsTrigger value="categorias" className="flex items-center data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 rounded-lg transition-all">
-              <BarChart3 className="w-4 h-4 mr-2" />
-              Categorias
-            </TabsTrigger>
-            <TabsTrigger value="distribuicao" className="flex items-center data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 rounded-lg transition-all">
-              <PieChartIcon className="w-4 h-4 mr-2" />
-              Distribuição
-            </TabsTrigger>
-            <TabsTrigger value="comparativo" className="flex items-center data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 rounded-lg transition-all">
-              <BarChart3 className="w-4 h-4 mr-2" />
-              Comparativo
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="evolucao" className="space-y-6">
-            <Card className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50 shadow-xl">
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <LineChartIcon className="w-5 h-5 mr-2 text-blue-500" />
-                  Evolução Mensal - Valores Empenhados vs Saldo
-                </CardTitle>
-                <CardDescription>
-                  Acompanhamento da execução orçamentária ao longo do ano com tendências
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={450}>
-                  <AreaChart data={chartData}>
-                    <defs>
-                      <linearGradient id="colorEmpenhado" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.1}/>
-                      </linearGradient>
-                      <linearGradient id="colorSaldo" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="#10B981" stopOpacity={0.1}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis 
-                      dataKey="mes" 
-                      tick={{ fontSize: 12, fill: '#64748b' }}
-                      angle={-45}
-                      textAnchor="end"
-                      height={80}
-                    />
-                    <YAxis 
-                      tick={{ fontSize: 12, fill: '#64748b' }}
-                      tickFormatter={(value) => `R$ ${(value / 1000000).toFixed(1)}M`}
-                    />
-                    <Tooltip 
-                      formatter={(value, name) => [formatCurrency(value), name === 'empenhado' ? 'Empenhado' : 'Saldo']}
-                      labelFormatter={(label) => `Período: ${label}`}
-                      contentStyle={{ 
-                        backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '8px',
-                        boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)'
-                      }}
-                    />
-                    <Legend />
-                    <Area 
-                      type="monotone" 
-                      dataKey="empenhado" 
-                      stackId="1"
-                      stroke="#3B82F6" 
-                      fillOpacity={1}
-                      fill="url(#colorEmpenhado)"
-                      name="Empenhado"
-                      strokeWidth={2}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="saldo" 
-                      stackId="1"
-                      stroke="#10B981" 
-                      fillOpacity={1}
-                      fill="url(#colorSaldo)"
-                      name="Saldo"
-                      strokeWidth={2}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="categorias" className="space-y-6">
-            <Card className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50 shadow-xl">
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <BarChart3 className="w-5 h-5 mr-2 text-purple-500" />
-                  Top 5 Categorias - Valores Empenhados
-                </CardTitle>
-                <CardDescription>
-                  Principais categorias por volume de recursos empenhados com ranking
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={450}>
-                  <BarChart data={filteredCategories} layout="horizontal">
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis 
-                      type="number"
-                      tick={{ fontSize: 12, fill: '#64748b' }}
-                      tickFormatter={(value) => `R$ ${(value / 1000000).toFixed(1)}M`}
-                    />
-                    <YAxis 
-                      type="category"
-                      dataKey="categoria" 
-                      tick={{ fontSize: 12, fill: '#64748b' }}
-                      width={120}
-                    />
-                    <Tooltip 
-                      formatter={(value) => [formatCurrency(value), 'Valor Empenhado']}
-                      contentStyle={{ 
-                        backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '8px',
-                        boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)'
-                      }}
-                    />
-                    <Bar 
-                      dataKey="valor" 
-                      fill="url(#barGradient)"
-                      radius={[0, 8, 8, 0]}
-                    >
-                      <defs>
-                        <linearGradient id="barGradient" x1="0" y1="0" x2="1" y2="0">
-                          <stop offset="0%" stopColor="#8B5CF6" />
-                          <stop offset="100%" stopColor="#3B82F6" />
-                        </linearGradient>
-                      </defs>
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="distribuicao" className="space-y-6">
-            <Card className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50 shadow-xl">
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <PieChartIcon className="w-5 h-5 mr-2 text-green-500" />
-                  Distribuição por Categoria
-                </CardTitle>
-                <CardDescription>
-                  Percentual de participação de cada categoria no total empenhado
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <ResponsiveContainer width="100%" height={400}>
-                    <PieChart>
-                      <Pie
-                        data={pieData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percentage }) => `${name} ${percentage}%`}
-                        outerRadius={120}
-                        fill="#8884d8"
-                        dataKey="value"
-                        stroke="#fff"
-                        strokeWidth={2}
-                      >
-                        {pieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        formatter={(value) => formatCurrency(value)}
-                        contentStyle={{ 
-                          backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '8px',
-                          boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)'
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="space-y-3">
-                    <h4 className="font-semibold text-slate-700 dark:text-slate-300">Legenda Detalhada</h4>
-                    {pieData.map((item, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
-                        <div className="flex items-center">
-                          <div 
-                            className="w-4 h-4 rounded-full mr-3" 
-                            style={{ backgroundColor: item.color }}
-                          ></div>
-                          <span className="text-sm font-medium">{item.name}</span>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-sm font-bold">{item.percentage}%</div>
-                          <div className="text-xs text-slate-500">{formatCurrency(item.value)}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="comparativo" className="space-y-6">
-            <Card className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50 shadow-xl">
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <BarChart3 className="w-5 h-5 mr-2 text-orange-500" />
-                  Comparativo Mensal - Empenhado vs Saldo
-                </CardTitle>
-                <CardDescription>
-                  Comparação lado a lado dos valores empenhados e saldos por mês
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={450}>
-                  <BarChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis 
-                      dataKey="mes" 
-                      tick={{ fontSize: 12, fill: '#64748b' }}
-                      angle={-45}
-                      textAnchor="end"
-                      height={80}
-                    />
-                    <YAxis 
-                      tick={{ fontSize: 12, fill: '#64748b' }}
-                      tickFormatter={(value) => `R$ ${(value / 1000000).toFixed(1)}M`}
-                    />
-                    <Tooltip 
-                      formatter={(value, name) => [formatCurrency(value), name === 'empenhado' ? 'Empenhado' : 'Saldo']}
-                      contentStyle={{ 
-                        backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '8px',
-                        boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)'
-                      }}
-                    />
-                    <Legend />
-                    <Bar dataKey="empenhado" fill="#3B82F6" name="Empenhado" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="saldo" fill="#10B981" name="Saldo" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-
-        {/* Tabela de Detalhes Melhorada */}
-        {showDetails && (
-          <Card className="mt-8 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50 shadow-xl">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Detalhamento por Categoria</span>
-                <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                  Top 10 de Agosto
-                </Badge>
-              </CardTitle>
-              <CardDescription>
-                Valores detalhados das principais categorias de gastos com status de execução
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-700">
-                      <th className="text-left p-3 font-semibold text-slate-700 dark:text-slate-300">Ranking</th>
-                      <th className="text-left p-3 font-semibold text-slate-700 dark:text-slate-300">Categoria</th>
-                      <th className="text-right p-3 font-semibold text-slate-700 dark:text-slate-300">Valor Empenhado</th>
-                      <th className="text-right p-3 font-semibold text-slate-700 dark:text-slate-300">% do Total</th>
-                      <th className="text-center p-3 font-semibold text-slate-700 dark:text-slate-300">Status</th>
-                      <th className="text-center p-3 font-semibold text-slate-700 dark:text-slate-300">Tendência</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredCategories.map((item, index) => {
-                      const percentage = (item.valor / data.resumo.total_empenhado * 100).toFixed(1)
-                      const isHigh = percentage > 20
-                      const isReprovado = percentage < 5
-                      return (
-                        <tr key={index} className="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50/50 dark:hover:bg-slate-700/30 transition-colors">
-                          <td className="p-3">
-                            <div className="flex items-center">
-                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
-                                index === 0 ? 'bg-yellow-500' : 
-                                index === 1 ? 'bg-gray-400' : 
-                                index === 2 ? 'bg-amber-600' : 'bg-slate-400'
-                              }`}>
-                                {index + 1}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="p-3 font-medium text-slate-900 dark:text-slate-100">{item.categoria}</td>
-                          <td className="p-3 text-right font-mono text-slate-700 dark:text-slate-300">{formatCurrency(item.valor)}</td>
-                          <td className="p-3 text-right">
-                            <div className="flex items-center justify-end">
-                              <span className="mr-2">{percentage}%</span>
-                              <div className="w-16 bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-                                <div 
-                                  className={`h-2 rounded-full ${isHigh ? 'bg-red-500' : 'bg-blue-500'}`}
-                                  style={{ width: `${Math.min(percentage, 100)}%` }}
-                                ></div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="p-3 text-center">
-                            <Badge 
-                              variant={isReprovado ? "destructive" : isHigh ? "default" : "secondary"}
-                              className={isReprovado ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200" : ""}
-                            >
-                              {isReprovado ? "Reprovado" : isHigh ? "Alto" : "Normal"}
-                            </Badge>
-                          </td>
-                          <td className="p-3 text-center">
-                            {index % 3 === 0 ? (
-                              <TrendingUp className="w-4 h-4 text-green-500 mx-auto" />
-                            ) : index % 3 === 1 ? (
-                              <TrendingDown className="w-4 h-4 text-red-500 mx-auto" />
-                            ) : (
-                              <div className="w-4 h-4 bg-slate-400 rounded-full mx-auto"></div>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Footer */}
-        <footer className="mt-12 text-center text-slate-500 dark:text-slate-400 text-sm">
-          <p>Dashboard Financeiro 2025 - Última atualização: {new Date().toLocaleDateString('pt-BR')}</p>
-          <p className="mt-1">Dados processados de {data.evolucao_mensal.length} períodos mensais</p>
-        </footer>
-      </main>
-    </div>
-  )
+interface DashboardViewProps {
+  sheets: MonthlySheet[];
+  externalFilters?: { sheet?: string; tab?: string; category?: string };
+  onFiltersChange?: (filters: { sheet?: string; tab?: string; category?: string }) => void;
 }
 
-export default App
+export const DashboardView = ({ sheets, externalFilters, onFiltersChange }: DashboardViewProps) => {
+  const [filters, setFilters] = useState<DashboardFilter>({});
+
+  // Sync with external filters when they change
+  useEffect(() => {
+    if (externalFilters) {
+      setFilters(prev => ({ ...prev, ...externalFilters }));
+    }
+  }, [externalFilters]);
+
+  // Definir a planilha mais recente como padrão
+  useEffect(() => {
+    if (sheets.length > 0 && !filters.sheet && !externalFilters?.sheet) {
+      const latestSheet = sheets[sheets.length - 1];
+      const newFilters = { ...filters, sheet: latestSheet.id };
+      setFilters(newFilters);
+      onFiltersChange?.(newFilters);
+    }
+  }, [sheets, filters.sheet, externalFilters?.sheet, onFiltersChange]);
+
+  const dashboardData = useMemo(() => {
+    const selectedSheet = filters.sheet 
+      ? sheets.find(s => s.id === filters.sheet)
+      : sheets[sheets.length - 1]; // Usa a última planilha se nenhuma estiver selecionada
+
+    if (!selectedSheet) return null;
+
+    // Se uma aba específica foi selecionada, usar dados dessa aba
+    let categoriesToUse = selectedSheet.categories;
+    if (filters.tab && selectedSheet.tabs) {
+      const selectedTab = selectedSheet.tabs.find(t => t.id === filters.tab);
+      if (selectedTab) {
+        categoriesToUse = selectedTab.categories;
+      }
+    }
+
+    const filteredCategories = categoriesToUse.filter(cat => {
+      if (filters.category && cat.id !== filters.category) return false;
+      return true;
+    });
+
+    // Orçamento Total = valor da célula C16 (soma dos valores globais da planilha)
+    // Sempre usar o total da planilha completa, não apenas das categorias filtradas
+    const totalBudget = (() => {
+      // Procurar por uma categoria especial que contenha o total (linha TOTAL)
+      const totalCategory = selectedSheet.categories.find(cat => 
+        cat.name.toLowerCase().includes('total') || 
+        cat.id === 'total' || 
+        cat.name === 'TOTAL' ||
+        cat.name.toUpperCase() === 'TOTAL'
+      );
+      
+      if (totalCategory && totalCategory.globalValue > 0) {
+        return totalCategory.globalValue;
+      }
+      
+      // Fallback: somar todas as categorias da planilha (exceto TOTAL para evitar duplicação)
+      return selectedSheet.categories
+        .filter(cat => !cat.name.toLowerCase().includes('total'))
+        .reduce((sum, cat) => sum + cat.globalValue, 0);
+    })();
+    // Total Empenhado = soma da coluna "empenhado" de todas as categorias
+    const totalCommitted = filteredCategories.reduce((sum, cat) => sum + cat.committed, 0);
+    // Saldo Disponível = soma da coluna "saldo" de todas as categorias
+    const totalBalance = filteredCategories.reduce((sum, cat) => sum + cat.balance, 0);
+
+    // Dados para gráficos
+    const categoryData = filteredCategories.map(cat => ({
+      name: cat.name,
+      orcamento: cat.globalValue,
+      empenhado: cat.committed,
+      saldo: cat.balance,
+      percentual: (cat.committed / cat.globalValue) * 100
+    }));
+
+    const statusData = filteredCategories.flatMap(cat =>
+      cat.vehicles.flatMap(vehicle =>
+        Object.entries(vehicle.campaigns).map(([campaign, value]) => ({
+          category: cat.name,
+          vehicle: vehicle.name,
+          campaign,
+          value,
+          status: Math.random() > 0.3 ? 'empenhado' : 'pendente' // Simulação
+        }))
+      )
+    );
+
+    const pendingPayments = statusData.filter(item => item.status === 'pendente').length;
+    const completedCampaigns = statusData.filter(item => item.status === 'empenhado').length;
+
+    return {
+      totalBudget,
+      totalCommitted,
+      totalBalance,
+      pendingPayments,
+      completedCampaigns,
+      categoryData,
+      statusData
+    };
+  }, [sheets, filters]);
+
+  const formatCurrency = (value: number) => {
+    return value.toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    });
+  };
+
+  if (!dashboardData) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Nenhuma planilha disponível</p>
+      </div>
+    );
+  }
+
+  const COLORS = ['hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--warning))', 'hsl(var(--danger))'];
+
+  return (
+    <div className="space-y-6">
+      {/* Filtros */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Filtros do Dashboard</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Planilha</label>
+              <Select value={filters.sheet || ''} onValueChange={(value) => { 
+                const newFilters = { ...filters, sheet: value, tab: '', category: '' };
+                setFilters(newFilters);
+                onFiltersChange?.(newFilters);
+              }}>
+                <SelectTrigger className="bg-background w-full">
+                  <SelectValue placeholder="Selecione uma planilha" />
+                </SelectTrigger>
+                <SelectContent className="bg-background border-border z-50 max-w-[90vw]">
+                  {sheets.map((sheet) => (
+                    <SelectItem key={sheet.id} value={sheet.id} className="text-sm">
+                      <span className="truncate max-w-[250px] block">{sheet.name}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {/* Filtro de Aba */}
+            <div>
+              <label className="text-sm font-medium mb-2 block flex items-center gap-2">
+                <span>📋</span> Aba da Planilha
+              </label>
+              <Select value={filters.tab || 'main'} onValueChange={(value) => {
+                const newFilters = { ...filters, tab: value === 'main' ? '' : value, category: '' };
+                setFilters(newFilters);
+                onFiltersChange?.(newFilters);
+              }}>
+                <SelectTrigger className="bg-background">
+                  <SelectValue placeholder="Selecione uma aba" />
+                </SelectTrigger>
+                <SelectContent className="bg-background border-border z-50">
+                  <SelectItem value="main">Todas as Abas</SelectItem>
+                  {sheets.find(s => s.id === filters.sheet)?.tabs?.map((tab) => (
+                    <SelectItem key={tab.id} value={tab.id}>
+                      {tab.name}
+                    </SelectItem>
+                  )) || []}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            
+            <div>
+              <label className="text-sm font-medium mb-2 block">Categoria</label>
+              <Select value={filters.category || 'all'} onValueChange={(value) => {
+                const newFilters = { ...filters, category: value === 'all' ? '' : value };
+                setFilters(newFilters);
+                onFiltersChange?.(newFilters);
+              }}>
+                <SelectTrigger className="bg-background">
+                  <SelectValue placeholder="Todas as categorias" />
+                </SelectTrigger>
+                <SelectContent className="bg-background border-border z-50">
+                  <SelectItem value="all">Todas as categorias</SelectItem>
+                  {(() => {
+                    const selectedSheet = sheets.find(s => s.id === filters.sheet);
+                    if (!selectedSheet) return [];
+                    
+                    let categoriesToShow = selectedSheet.categories;
+                    if (filters.tab && selectedSheet.tabs) {
+                      const selectedTab = selectedSheet.tabs.find(t => t.id === filters.tab);
+                      if (selectedTab) {
+                        categoriesToShow = selectedTab.categories;
+                      }
+                    }
+                    
+                    return categoriesToShow.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </SelectItem>
+                    ));
+                  })()}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Cards de Resumo */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="card-hover">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Orçamento Total</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(dashboardData.totalBudget)}</div>
+            <p className="text-xs text-muted-foreground">
+              Base para todos os empenhos
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="card-hover">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Empenhado</CardTitle>
+            <TrendingUp className="h-4 w-4 text-success" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-success">{formatCurrency(dashboardData.totalCommitted)}</div>
+            <div className="flex items-center gap-2 mt-1">
+              <Progress 
+                value={(dashboardData.totalCommitted / dashboardData.totalBudget) * 100} 
+                className="flex-1 h-2"
+              />
+              <Badge variant="secondary">
+                {((dashboardData.totalCommitted / dashboardData.totalBudget) * 100).toFixed(1)}%
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="card-hover">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Saldo Disponível</CardTitle>
+            <TrendingDown className="h-4 w-4 text-warning" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-warning">{formatCurrency(dashboardData.totalBalance)}</div>
+            <p className="text-xs text-muted-foreground">
+              Valor ainda não empenhado
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="card-hover">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Pendências</CardTitle>
+            <AlertCircle className="h-4 w-4 text-danger" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-danger">{dashboardData.pendingPayments}</div>
+            <p className="text-xs text-muted-foreground">
+              Campanhas aguardando empenho
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Totalizadores por Valor Global - Categorias Específicas */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Totalizadores por Valor Global</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {(() => {
+              const categoryNames = [
+                'OAM', 'TVs', 'Site', 'Rádio', 'Jornais/Revistas', 
+                'Criação', 'Produtora', 'Redes Sociais', 'Material Gráfico', 
+                'Outdoors/Busdoor/ Mídia Exterior', 'Mídia Nacional', 'Eventos Especiais'
+              ];
+              
+              let totalSum = 0;
+              
+              const results = categoryNames.map((categoryName, index) => {
+                // Busca na planilha atual por nome similar
+                const category = dashboardData.categoryData.find(cat => {
+                  const catLower = cat.name.toLowerCase();
+                  const searchLower = categoryName.toLowerCase();
+                  return catLower.includes(searchLower) || 
+                         searchLower.includes(catLower) ||
+                         catLower === searchLower;
+                });
+                
+                const value = category ? category.orcamento : 0;
+                totalSum += value;
+                
+                return (
+                  <div key={categoryName} className="p-4 bg-muted/30 rounded-lg border-l-4" style={{borderLeftColor: COLORS[index % COLORS.length]}}>
+                    <h4 className="font-semibold text-sm mb-2">{categoryName}</h4>
+                    <div className="text-xl font-bold text-primary">{formatCurrency(value)}</div>
+                    <p className="text-xs text-muted-foreground mt-1">Valor Global</p>
+                    {category && (
+                      <p className="text-xs text-success mt-1">✓ Encontrado: {category.name}</p>
+                    )}
+                  </div>
+                );
+              });
+              
+              return results;
+            })()}
+          </div>
+          <div className="mt-4 p-4 bg-primary/10 rounded-lg">
+            <div className="flex justify-between items-center">
+              <span className="font-semibold text-lg">TOTAL:</span>
+              <span className="font-bold text-2xl text-primary">
+                {formatCurrency(
+                  ['OAM', 'TVs', 'Site', 'Rádio', 'Jornais/Revistas', 
+                   'Criação', 'Produtora', 'Redes Sociais', 'Material Gráfico', 
+                   'Outdoors/Busdoor/ Mídia Exterior', 'Mídia Nacional', 'Eventos Especiais']
+                  .reduce((sum, categoryName) => {
+                    const category = dashboardData.categoryData.find(cat => {
+                      const catLower = cat.name.toLowerCase();
+                      const searchLower = categoryName.toLowerCase();
+                      return catLower.includes(searchLower) || 
+                             searchLower.includes(catLower) ||
+                             catLower === searchLower;
+                    });
+                    return sum + (category ? category.orcamento : 0);
+                  }, 0)
+                )}
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Gráficos */}
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Orçamento vs Empenhado por Categoria</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={dashboardData.categoryData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis 
+                  dataKey="name" 
+                  angle={-45}
+                  textAnchor="end"
+                  height={80}
+                />
+                <YAxis 
+                  tickFormatter={(value) => `R$ ${(value / 1000000).toFixed(1)}M`}
+                />
+                <Tooltip 
+                  formatter={(value: number) => formatCurrency(value)}
+                />
+                <Bar dataKey="orcamento" fill="hsl(var(--primary))" name="Orçamento" />
+                <Bar dataKey="empenhado" fill="hsl(var(--success))" name="Empenhado" />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Distribuição do Orçamento</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={dashboardData.categoryData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({name, percent}) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="orcamento"
+                >
+                  {dashboardData.categoryData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Lista da Categoria Selecionada */}
+      {filters.category && (() => {
+        const selectedSheet = sheets.find(s => s.id === filters.sheet);
+        if (!selectedSheet) return null;
+        
+        let categoriesToUse = selectedSheet.categories;
+        if (filters.tab && selectedSheet.tabs) {
+          const selectedTab = selectedSheet.tabs.find(t => t.id === filters.tab);
+          if (selectedTab) {
+            categoriesToUse = selectedTab.categories;
+          }
+        }
+        
+        const selectedCategory = categoriesToUse.find(cat => cat.id === filters.category);
+        if (!selectedCategory) return null;
+
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle>Detalhes da Categoria: {selectedCategory.name}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="text-center p-4 bg-muted/50 rounded-lg">
+                    <div className="text-2xl font-bold text-primary">{formatCurrency(selectedCategory.globalValue)}</div>
+                    <p className="text-sm text-muted-foreground">Orçamento Global</p>
+                  </div>
+                  <div className="text-center p-4 bg-muted/50 rounded-lg">
+                    <div className="text-2xl font-bold text-success">{formatCurrency(selectedCategory.committed)}</div>
+                    <p className="text-sm text-muted-foreground">Valor Empenhado</p>
+                  </div>
+                  <div className="text-center p-4 bg-muted/50 rounded-lg">
+                    <div className="text-2xl font-bold text-warning">{formatCurrency(selectedCategory.balance)}</div>
+                    <p className="text-sm text-muted-foreground">Saldo Disponível</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">
+                    {selectedCategory.name.toLowerCase().includes('site') ? 'Sites da Categoria' : 'Veículos da Categoria'}
+                  </h3>
+                  {selectedCategory.vehicles.map((vehicle, index) => (
+                    <Card key={vehicle.id} className="border-l-4 border-l-primary">
+                      <CardContent className="p-4">
+                        <div className="flex justify-between items-start mb-3">
+                          <h4 className="font-semibold text-lg">
+                            {selectedCategory.name.toLowerCase().includes('site') ? `Site: ${vehicle.name}` : vehicle.name}
+                          </h4>
+                          <Badge variant={vehicle.balance > 0 ? "default" : "destructive"}>
+                            Saldo: {formatCurrency(vehicle.balance)}
+                          </Badge>
+                        </div>
+                        
+                        <div className="grid gap-2 md:grid-cols-3 mb-4">
+                          <div>
+                            <span className="text-sm text-muted-foreground">
+                              {selectedCategory.name.toLowerCase().includes('site') ? 'Orçamento do Site:' : 'Orçamento Total:'}
+                            </span>
+                            <div className="font-medium">{formatCurrency(vehicle.totalBudget)}</div>
+                          </div>
+                          <div>
+                            <span className="text-sm text-muted-foreground">
+                              {selectedCategory.name.toLowerCase().includes('site') ? 'Valor Investido:' : 'Total Usado:'}
+                            </span>
+                            <div className="font-medium">{formatCurrency(vehicle.totalUsed)}</div>
+                          </div>
+                          <div>
+                            <span className="text-sm text-muted-foreground">% Utilizado:</span>
+                            <div className="font-medium">
+                              {((vehicle.totalUsed / vehicle.totalBudget) * 100).toFixed(1)}%
+                            </div>
+                          </div>
+                        </div>
+
+                        {vehicle.observations && (
+                          <div className="mb-4 p-3 bg-muted/30 rounded-lg">
+                            <span className="text-sm text-muted-foreground">Observações:</span>
+                            <p className="text-sm mt-1">{vehicle.observations}</p>
+                          </div>
+                        )}
+
+                        <div>
+                          <h5 className="font-medium mb-2">
+                            {selectedCategory.name.toLowerCase().includes('site') ? 'Investimentos por Período:' : 'Campanhas:'}
+                          </h5>
+                          <div className="space-y-2">
+                            {Object.entries(vehicle.campaigns).map(([campaign, value]) => (
+                              <div key={campaign} className="flex justify-between items-center p-3 bg-muted/20 rounded-lg">
+                                <div className="flex flex-col">
+                                  <span className="text-sm font-medium">{campaign}</span>
+                                  {selectedCategory.name.toLowerCase().includes('site') && (
+                                    <span className="text-xs text-muted-foreground">Período de investimento</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-lg">{formatCurrency(value)}</span>
+                                  <Badge variant="secondary">
+                                    {Math.random() > 0.3 ? 'Empenhado' : 'Pendente'}
+                                  </Badge>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          
+                          {selectedCategory.name.toLowerCase().includes('site') && (
+                            <div className="mt-4 p-3 bg-primary/10 rounded-lg">
+                              <div className="flex justify-between items-center">
+                                <span className="font-medium">Total investido neste site:</span>
+                                <span className="font-bold text-xl text-primary">{formatCurrency(vehicle.totalUsed)}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
+    </div>
+  );
+};
